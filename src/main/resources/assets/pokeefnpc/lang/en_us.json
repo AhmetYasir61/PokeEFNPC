@@ -245,5 +245,6 @@
   "pokeefnpc.editor.landmark_set": "%s set for %s.",
   "pokeefnpc.editor.tooltip.mode": "Mode: %s",
   "pokeefnpc.editor.tooltip.role": "Role: %s",
-  "pokeefnpc.editor.tooltip.help": "Right click air to change mode - sneak + right click an NPC to change role"
+  "pokeefnpc.editor.tooltip.help": "Right click air to change mode - sneak + right click an NPC to change role",
+  "pokeefnpc.dialogue.no_answer": "Hm. I have nothing to say to that."
 }

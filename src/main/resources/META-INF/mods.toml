@@ -16,9 +16,15 @@ Every NPC carries a mood that shows on its face — brows down and drawn in when
 it is angry, brows raised and mouth turned down when it is sad — and plays
 looping idle emotes appropriate to its role.
 
-Epic Fight and PokeFace are both OPTIONAL. Both are reached through reflection,
-so this mod loads and plays fine without either: without Epic Fight the NPCs
-use vanilla combat, and without PokeFace they simply have no drawn face.
+NPCs can also be talked to out loud through Simple Voice Chat, and answer in
+their own voice, with speech recognition, speech synthesis and a language model
+all running on your own machine — no account, no key, nothing leaving the
+computer.
+
+Epic Fight, PokeFace and Simple Voice Chat are all OPTIONAL. The mod loads and
+plays fine without any of them: without Epic Fight the NPCs use vanilla combat,
+without PokeFace they simply have no drawn face, and without Simple Voice Chat
+they are talked to by typing.
 '''
 
 [[dependencies.${mod_id}]]
@@ -45,6 +51,16 @@ use vanilla combat, and without PokeFace they simply have no drawn face.
 
 [[dependencies.${mod_id}]]
     modId="pokeface"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
+
+# Optional. When present, NPCs hear players speak and answer aloud. The plugin
+# that uses its API is loaded by Simple Voice Chat itself, so nothing in this
+# mod classloads a voice chat type when the mod is absent.
+[[dependencies.${mod_id}]]
+    modId="voicechat"
     mandatory=false
     versionRange="*"
     ordering="AFTER"

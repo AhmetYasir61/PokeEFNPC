@@ -34,6 +34,9 @@ minecraft {
 repositories {
     flatDir { dirs 'libs' }
     maven { url = 'https://cursemaven.com' }
+    // Simple Voice Chat publishes an api-only artifact here. It is the same API
+    // the full mod ships, so compiling against it needs no jar in the repo.
+    maven { url = 'https://maven.maxhenkel.de/repository/public' }
 }
 
 dependencies {
@@ -45,6 +48,15 @@ dependencies {
     // completion while working on the bridges.
     // compileOnly fg.deobf("blank:epicfight:${epicfight_version}")
     // compileOnly fg.deobf("blank:pokeface:${pokeface_version}")
+
+    // Simple Voice Chat, also optional at runtime. Unlike the two above this is
+    // a real compile-time dependency, because the plugin has to implement SVC's
+    // interfaces — reflection cannot satisfy an interface contract. It stays
+    // safe because the ONLY class that touches these types is the plugin, and
+    // the plugin is loaded by Simple Voice Chat itself: when the mod is absent,
+    // nothing ever classloads it. See voice/NpcVoiceBridge for the guard the
+    // rest of the mod goes through.
+    compileOnly "de.maxhenkel.voicechat:voicechat-api:${voicechat_api_version}"
 }
 
 tasks.named('processResources', ProcessResources).configure {

@@ -9,7 +9,10 @@ import com.pokewing.pokeefnpc.npc.NpcNames;
 import com.pokewing.pokeefnpc.npc.NpcRole;
 import com.pokewing.pokeefnpc.registry.ModEntities;
 import com.pokewing.pokeefnpc.settlement.Settlement;
+import com.pokewing.pokeefnpc.brain.NpcBrain;
 import com.pokewing.pokeefnpc.settlement.SettlementManager;
+import com.pokewing.pokeefnpc.voice.NpcVoiceBridge;
+import com.pokewing.pokeefnpc.voice.VoiceSessions;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -18,8 +21,11 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MobSpawnType;
 import net.minecraft.world.entity.player.Player;
+import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.server.ServerStartingEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 
 /**
@@ -58,6 +64,11 @@ public class ServerEvents {
         if (++this.scoutTimer >= SCOUT_INTERVAL) {
             this.scoutTimer = 0;
             creditScouting(level);
+        }
+        // Checked every tick and cheap when nobody is talking: an utterance ends
+        // when the packets stop, so the only way to notice is to keep looking.
+        if (NpcVoiceBridge.canListen()) {
+            VoiceSessions.sweep(level.getServer());
         }
     }
 
@@ -161,6 +172,46 @@ public class ServerEvents {
         PlayerLedger ledger = PlayerLedger.get(level);
         for (ServerPlayer player : level.players()) {
             ledger.creditVisit(player.getUUID(), player.blockPosition());
+        }
+    }
+
+
+    // ------------------------------------------------------------- lifecycle
+
+    @SubscribeEvent
+    public void onServerStarting(ServerStartingEvent event) {
+        // Both pools are started here rather than at mod construction, so a
+        // single-player world that is loaded and quit repeatedly does not leak a
+        // thread pool per load.
+        NpcBrain.start();
+        if (NpcVoiceBridge.modPresent()) {
+            NpcVoiceBridge.start();
+        }
+    }
+
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent event) {
+        NpcBrain.stop();
+        NpcVoiceBridge.stop();
+    }
+
+    /**
+     * Typed chat reaches an NPC the same way speech does.
+     *
+     * <p>The message is <b>not</b> consumed — it goes to chat as normal — but if
+     * the player happens to be looking at somebody while they type it, that
+     * somebody hears it. So talking to a villager needs no command and no
+     * special syntax: stand in front of them and say something.
+     */
+    @SubscribeEvent
+    public void onChat(ServerChatEvent event) {
+        ServerPlayer player = event.getPlayer();
+        if (player == null || !NpcBrain.available()) {
+            return;
+        }
+        NpcEntity addressee = VoiceSessions.findAddressee(player);
+        if (addressee != null) {
+            addressee.heard(player, event.getRawText(), false);
         }
     }
 

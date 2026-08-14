@@ -107,6 +107,14 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
             SynchedEntityData.defineId(NpcEntity.class, EntityDataSerializers.INT);
     private static final EntityDataAccessor<Integer> DATA_ACTIVITY =
             SynchedEntityData.defineId(NpcEntity.class, EntityDataSerializers.INT);
+    /**
+     * The account name whose skin this character wears, or empty for the role's
+     * own skin. Only the NAME travels — each client resolves and downloads the
+     * image itself, exactly as vanilla does for players, so no skin data passes
+     * through the server.
+     */
+    private static final EntityDataAccessor<String> DATA_SKIN =
+            SynchedEntityData.defineId(NpcEntity.class, EntityDataSerializers.STRING);
 
     /** How often reputation and settlement bookkeeping run, in ticks. */
     private static final int SLOW_TICK = 200;
@@ -166,6 +174,7 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         this.entityData.define(DATA_EMOTE, -1);
         this.entityData.define(DATA_EMOTE_TICKS, 0);
         this.entityData.define(DATA_ACTIVITY, Activity.HOME_IDLE.ordinal());
+        this.entityData.define(DATA_SKIN, "");
     }
 
     // ------------------------------------------------------------------- goals
@@ -277,6 +286,7 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
                 this.mood.feel(this.personality, -0.15F, -0.1F);
             }
         }
+        assignSkinIfNeeded();
         this.stock.restock(this.random, this.role, settlement == null ? 0.5F : settlement.prosperity());
         this.questBoard.refresh(this.random, this.role, serverLevel.getGameTime(),
                 settlement == null ? 0.5F : settlement.prosperity());
@@ -499,6 +509,7 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
             if (settlement != null) {
                 settlement.removeResident(getUUID(), this.role);
             }
+            com.pokewing.pokeefnpc.brain.NpcBrain.forget(getUUID());
         }
         super.die(source);
     }
@@ -662,6 +673,104 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         return role().hasPage(page);
     }
 
+    // ------------------------------------------------------------- speech
+
+    /**
+     * Something a player said to this NPC, whether typed or spoken aloud.
+     *
+     * <p>Both routes land here so there is exactly one place where being talked
+     * to turns into a reply: the NPC looks up, its mood registers the attention,
+     * and the request goes to the local model. When no model is running the NPC
+     * falls back to its written line, which is why the feature can be off
+     * entirely and nothing feels broken.
+     *
+     * @param spokenAloud true when it came in over voice, so the answer goes back
+     *                    out over voice as well
+     */
+    public void heard(ServerPlayer player, String said, boolean spokenAloud) {
+        if (said == null || said.isBlank() || !isAlive()) {
+            return;
+        }
+        getLookControl().setLookAt(player, 30.0F, 30.0F);
+
+        if (!this.reputation.willDealWith(player.getUUID())) {
+            this.mood.latch(this.personality, Emotion.ANGRY);
+            pushFaceToClients();
+            speak(player, "pokeefnpc.dialogue.refuse");
+            return;
+        }
+        // Being addressed is itself a small social event, so an NPC that is
+        // talked to warms up a little even before it has answered.
+        this.mood.feel(this.personality, 0.08F * this.personality.sociability, 0.1F);
+
+        if (com.pokewing.pokeefnpc.brain.NpcBrain.available()) {
+            com.pokewing.pokeefnpc.brain.NpcBrain.converse(this, player, said, spokenAloud);
+        } else {
+            speak(player, "pokeefnpc.dialogue.no_answer");
+        }
+    }
+
+    /** Convenience for the voice path. */
+    public void hearSpoken(ServerPlayer player, String said) {
+        heard(player, said, true);
+    }
+
+    // ------------------------------------------------------------- appearance
+
+    /** The account name whose skin this NPC wears, or empty. */
+    public String skinName() {
+        return this.entityData.get(DATA_SKIN);
+    }
+
+    public void setSkinName(@Nullable String name) {
+        this.entityData.set(DATA_SKIN, name == null ? "" : name);
+    }
+
+    /**
+     * Gives an NPC a face from the wider world.
+     *
+     * <p>Two ways in, checked in that order. A name tag wins — rename a villager
+     * to an account name and it wears that account's skin, which is the whole
+     * feature with no interface at all. Otherwise one is drawn from the config
+     * pool, stably, from the NPC's own id: the same character keeps the same
+     * face for its whole life rather than reshuffling every time it is reloaded.
+     */
+    private void assignSkinIfNeeded() {
+        if (com.pokewing.pokeefnpc.PokeEFNPCConfig.skinFromCustomName() && hasCustomName()) {
+            String tagged = getCustomName().getString().trim();
+            // Only the first word, and only if it could be an account name at
+            // all — generated names like "Ser Roderic" are not accounts.
+            int space = tagged.indexOf(' ');
+            String candidate = space < 0 ? tagged : tagged.substring(0, space);
+            if (isPlausibleAccountName(candidate) && !candidate.equalsIgnoreCase(skinName())) {
+                setSkinName(candidate);
+                return;
+            }
+        }
+        if (!skinName().isEmpty()) {
+            return;
+        }
+        var pool = com.pokewing.pokeefnpc.PokeEFNPCConfig.skinPool();
+        if (pool.isEmpty()) {
+            return;
+        }
+        int index = Math.floorMod(getUUID().hashCode(), pool.size());
+        setSkinName(pool.get(index));
+    }
+
+    private static boolean isPlausibleAccountName(String name) {
+        if (name.length() < 3 || name.length() > 16) {
+            return false;
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (!Character.isLetterOrDigit(c) && c != '_') {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // ------------------------------------------------------------- misc mob
 
     @Override
@@ -720,6 +829,7 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         tag.putInt("Activity", this.activity.ordinal());
         tag.putBoolean("Locked", this.locked);
         tag.putBoolean("Natural", this.natural);
+        tag.putString("Skin", skinName());
         if (this.settlementId != null) {
             tag.putUUID("Settlement", this.settlementId);
         }
@@ -756,6 +866,7 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         setActivity(Activity.byOrdinal(tag.getInt("Activity")));
         this.locked = tag.getBoolean("Locked");
         this.natural = tag.getBoolean("Natural");
+        setSkinName(tag.getString("Skin"));
         this.settlementId = tag.hasUUID("Settlement") ? tag.getUUID("Settlement") : null;
         this.homePos = tag.contains("Home")
                 ? net.minecraft.nbt.NbtUtils.readBlockPos(tag.getCompound("Home")) : null;

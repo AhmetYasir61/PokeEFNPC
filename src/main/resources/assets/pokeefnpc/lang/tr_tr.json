@@ -245,5 +245,6 @@
   "pokeefnpc.editor.landmark_set": "%s, %s için ayarlandı.",
   "pokeefnpc.editor.tooltip.mode": "Mod: %s",
   "pokeefnpc.editor.tooltip.role": "Rol: %s",
-  "pokeefnpc.editor.tooltip.help": "Modu değiştirmek için havaya sağ tık - rolü değiştirmek için eğilip NPC'ye sağ tık"
+  "pokeefnpc.editor.tooltip.help": "Modu değiştirmek için havaya sağ tık - rolü değiştirmek için eğilip NPC'ye sağ tık",
+  "pokeefnpc.dialogue.no_answer": "Hmm. Buna diyecek bir şeyim yok."
 }

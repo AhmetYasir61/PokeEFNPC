@@ -45,9 +45,17 @@ public class NpcRenderer extends HumanoidMobRenderer<NpcEntity, NpcModel> {
 
     @Override
     public ResourceLocation getTextureLocation(NpcEntity npc) {
-        // Role skins are optional resources: an install that has not drawn one
-        // for, say, the executioner falls back to the default player skin rather
-        // than rendering a missing-texture NPC.
+        // Three tiers, best first. An account skin the NPC was given wins; then
+        // a skin shipped for its role; then the default. Every tier can be
+        // missing, so an NPC always renders as something rather than as the
+        // missing-texture chequerboard.
+        String account = npc.skinName();
+        if (!account.isEmpty()) {
+            ResourceLocation downloaded = NpcSkinLoader.get(account);
+            if (downloaded != null) {
+                return downloaded;
+            }
+        }
         ResourceLocation roleTexture = npc.role().texture();
         return NpcSkins.exists(roleTexture) ? roleTexture : FALLBACK;
     }

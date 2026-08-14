@@ -51,6 +51,15 @@ public final class Mood {
     }
 
     /**
+     * Shuts the mouth immediately. Used when spoken audio actually finishes, so
+     * the flap stops on the last syllable rather than on an estimate of how long
+     * the line was going to take.
+     */
+    public void stopSpeaking() {
+        this.speakingTicks = 0;
+    }
+
+    /**
      * Records something that happened to this NPC.
      *
      * @param valenceDelta how much better or worse this made things, in [-1,1]

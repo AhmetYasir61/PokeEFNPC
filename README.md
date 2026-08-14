@@ -152,6 +152,15 @@ a cowardly soldier runs for its bed. The watch converges on whatever has got
 | `allowNpcBuilding` | `true` | Let NPCs place torches and fences. Off = they still fight and flee, they just stop building. |
 | `stealFromPlayers` | `false` | Off = thieves steal from settlement stores instead of player inventories. |
 | `replaceVanillaVillagers` | `false` | Convert vanilla villagers into NPCs. |
+| `voice.enabled` | `true` | Hear players and answer aloud (needs Simple Voice Chat). |
+| `voice.coneDot` | `0.6` | How directly you must face an NPC to be talking to it. |
+| `speech_to_text.endpoint` | whisper.cpp | Local transcription URL. |
+| `language_model.enabled` | `false` | Off = written dialogue only. |
+| `language_model.endpoint` | Ollama | Local model URL. |
+| `language_model.extraPrompt` | `""` | Appended to every prompt — set a language here. |
+| `text_to_speech.endpoint` | Piper | Local synthesis URL. |
+| `skins.pool` | `[]` | Account names NPCs draw skins from. |
+| `skins.fromCustomName` | `true` | A name tag chooses the skin. |
 
 ---
 
@@ -169,17 +178,138 @@ no duplicated drawing logic and no changes needed on the PokeFace side. Without
 it, NPCs have plain skin faces and the mood system still drives behaviour,
 emotes and dialogue.
 
-Both bridges absorb every failure and log once. Neither is load-bearing.
+**Simple Voice Chat** — optional. Unlike the two above this is a compile-time
+dependency, because a plugin has to *implement* SVC's interfaces and reflection
+cannot satisfy an interface contract. It stays safe because the only class that
+names a voice chat type is the plugin, and the plugin is loaded by Simple Voice
+Chat itself — on an install without it, nothing ever classloads that file, and
+every other class goes through a facade whose signatures mention no voice chat
+types at all. The microphone event is never cancelled: players hear each other
+exactly as they always did, and the NPCs are simply listening in.
+
+All three bridges absorb every failure and log once. None is load-bearing.
+
+---
+
+---
+
+## Talking to them out loud
+
+With **Simple Voice Chat** installed, you can just speak to an NPC. No key to
+hold, no command, no menu: stand in front of somebody and talk.
+
+**How it decides you are talking to it.** Who is being addressed is fixed at the
+*first* frame of the sentence — nearest NPC inside the cone you are facing, in
+line of sight — so turning your head mid-sentence does not deliver the back half
+of it to a different villager. The cone is what stops a crowded square from all
+answering at once.
+
+**How it knows you finished.** Simple Voice Chat sends packets while you
+transmit and stops when you do not, so an utterance is the run of packets bounded
+by silence. Anything under 400 ms, or too quiet, is discarded as a cough.
+
+**How it answers.** The reply is played on an audio channel anchored to the NPC
+itself, so it comes out of that villager's mouth with normal distance falloff and
+directionality, and only the person being answered hears it. Each character is
+pitched from its role and its own id — captains and executioners low, bards and
+menders high, ±4% per individual — so one voice model still produces a village of
+distinct people, and the same NPC always sounds the same.
+
+The mouth stops moving on the last syllable, because the stop is driven by the
+audio actually ending rather than by a guess at how long the line was.
+
+Typed chat goes down the exact same path: if you happen to be looking at somebody
+while you type, they hear it. Your message still goes to chat as normal.
+
+---
+
+## Thinking, on your own machine
+
+Free and offline. Three programs, all local, all optional independently:
+
+| Job | Free option | Config section |
+|---|---|---|
+| Hearing | `whisper.cpp` server, faster-whisper | `[speech_to_text]` |
+| Thinking | Ollama, llama.cpp server, LM Studio | `[language_model]` |
+| Speaking | Piper | `[text_to_speech]` |
+
+```
+# hearing
+./server -m models/ggml-base.bin --port 8080
+
+# thinking
+ollama serve && ollama pull llama3.2:3b
+
+# speaking
+piper --model en_GB-alan-medium.onnx --http --port 5000
+```
+
+The recogniser and the model are addressed through the shapes everything already
+speaks — multipart upload for transcription, OpenAI chat-completions for the
+model — so any of the runners above work by changing one URL. Nothing needs an
+account, a key, or a network connection.
+
+### The model is given a character, not a role
+
+It is never asked "what would a villager say?". It is told who *this particular
+person* is: its trade, the traits it was rolled with, the mood the simulation has
+it in right now, what it thinks of you, the hour, and how its village is faring.
+So the same question put to a contented baker and to a frightened one during a
+raid gets genuinely different answers, because the facts in the prompt are
+different facts.
+
+### The simulation stays in charge
+
+The model can **say** things and **express** a mood, and nothing else. It cannot
+set a price, hand out an item, accept a contract, or change a reputation — every
+one of those still goes through the normal checked path in `NpcActionPacket`. A
+reply may carry at most one `[emote:wave]` and one `[mood:angry]` tag, which are
+mapped onto the mod's own enums and **stripped from the text**; an unknown tag is
+discarded. That is what makes the model part of the character rather than a chat
+window bolted onto one — the same reply that says *get away from my stall* also
+folds the shopkeeper's arms and puts the scowl on its face.
+
+Set `extraPrompt` for a language: `Always answer in Turkish.`
+
+### It never costs you a tick
+
+Every network call — recognition, model, synthesis — runs on bounded pools at
+minimum thread priority, and results hop back to the server thread before
+touching anything in the world. When a queue is full the request is **dropped**
+and the NPC uses its written line. After three failures the client backs off for
+a minute rather than letting a village full of NPCs each discover the same dead
+socket. A slow model makes the world quieter, never laggier.
 
 ---
 
 ## Skins
 
-NPCs use the vanilla player model, so role skins are ordinary 64×64 player skins
-at `assets/pokeefnpc/textures/entity/npc/<role>.png`. They are **optional** — a
-role with no art falls back to the default skin rather than rendering a
-missing-texture NPC, so a resource pack can add art for any role with no code
-change.
+NPCs use the vanilla player model, so any player skin fits them.
+
+**On NameMC:** NameMC has no public API, and scraping its pages is fragile and
+against its terms. What it *displays* is Mojang's own profile data — so that is
+read directly instead: `api.mojang.com` for the UUID, `sessionserver.mojang.com`
+for the skin URL and the slim-arm flag. Same skin, from the source, no scraping.
+If you would rather point somewhere else — an offline-mode server, a mirror, a
+proxy in front of NameMC — `urlTemplate` takes a URL with `{name}` in it and is
+used instead, with no lookup at all.
+
+Two ways to give an NPC a face:
+
+- **A name tag.** Rename an NPC to an account name and it wears that account's
+  skin. That is the whole feature, with no interface at all.
+- **The pool.** Put account names in `skins.pool` and NPCs draw from it — stably,
+  from their own id, so a character keeps its face for life rather than
+  reshuffling on every reload.
+
+Resolution and download happen **entirely on the client**, exactly as vanilla
+does for players: the server syncs a username and nothing else, so no skin data
+passes through it. Downloads are cached to `.minecraft/pokeefnpc-skins` and to a
+registered texture, legacy 64×32 skins are converted, and a name that is still
+downloading or has no account behind it simply falls back to the role skin.
+
+Role skins shipped with the mod remain the middle tier: ordinary 64×64 player
+skins at `assets/pokeefnpc/textures/entity/npc/<role>.png`, all optional.
 
 ## Building
 
