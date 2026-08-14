@@ -1,0 +1,51 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+description='''
+A living medieval/fantasy population: NPCs that are born into a village,
+claim a home, keep a daily routine, work their trade, run shops and guilds,
+raise defences and fight for their lives when the monsters come.
+
+Every NPC carries a mood that shows on its face — brows down and drawn in when
+it is angry, brows raised and mouth turned down when it is sad — and plays
+looping idle emotes appropriate to its role.
+
+Epic Fight and PokeFace are both OPTIONAL. Both are reached through reflection,
+so this mod loads and plays fine without either: without Epic Fight the NPCs
+use vanilla combat, and without PokeFace they simply have no drawn face.
+'''
+
+[[dependencies.${mod_id}]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20.1,1.21)"
+    ordering="NONE"
+    side="BOTH"
+
+# Optional. Declared only so load order is right WHEN present.
+[[dependencies.${mod_id}]]
+    modId="epicfight"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="pokeface"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
