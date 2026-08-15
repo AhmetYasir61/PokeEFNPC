@@ -4,6 +4,7 @@ import com.pokewing.pokeefnpc.PokeEFNPC;
 import com.pokewing.pokeefnpc.emote.Emote;
 import com.pokewing.pokeefnpc.npc.NpcEntity;
 
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.fml.ModList;
 
@@ -90,8 +91,17 @@ public final class EpicFightBridge {
                             + "procedural emotes.");
             return;
         }
-        getEntityPatch = findEntityPatchMethod();
-        playAnimationSynchronised = findPlayAnimationMethod();
+        try {
+            getEntityPatch = findEntityPatchMethod();
+            playAnimationSynchronised = findPlayAnimationMethod();
+        } catch (Throwable t) {
+            // A compatibility lookup is never worth a crash. Whatever went wrong
+            // in Epic Fight's classes, the NPCs still fight with vanilla melee.
+            PokeEFNPC.LOGGER.warn("PokeEFNPC: Epic Fight lookup threw ({}); "
+                    + "staying on vanilla combat.", t.toString());
+            getEntityPatch = null;
+            playAnimationSynchronised = null;
+        }
 
         if (getEntityPatch == null) {
             // Naming the classes that were tried makes this diagnosable from a
@@ -117,10 +127,24 @@ public final class EpicFightBridge {
      * both are accepted and {@link #patchBaseClass} records which is in play:
      * non-null means the two-argument form and the class to pass for it.
      */
+    /**
+     * Finds Epic Fight's patch lookup.
+     *
+     * <p>Deliberately asks for <b>named signatures</b> rather than walking
+     * {@code getMethods()}. Enumerating a class forces the JVM to resolve every
+     * parameter and return type on it, and Epic Fight's capability class
+     * references client-only types such as {@code LocalPlayer}; on a dedicated
+     * server Forge's dist cleaner refuses to load those and throws. Walking the
+     * method list therefore crashed the moment an NPC was created on a server —
+     * asking for the exact signatures touches nothing else.
+     *
+     * <p>The generic two-argument form is what current Epic Fight ships; the
+     * one-argument form is kept for older builds. {@link #patchBaseClass}
+     * records which is in play: non-null means the two-argument form.
+     */
     private static Method findEntityPatchMethod() {
-        patchBaseClass = resolvePatchBaseClass();
+        Class<?> base = resolvePatchBaseClass();
 
-        Method oneArg = null;
         for (String className : CAPABILITY_CLASSES) {
             Class<?> caps;
             try {
@@ -128,34 +152,37 @@ public final class EpicFightBridge {
             } catch (Throwable ignored) {
                 continue;
             }
-            for (Method method : caps.getMethods()) {
-                if (!java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
-                    continue;
+            // Every lookup below is individually guarded: one bad signature on
+            // one Epic Fight version must not cost the others.
+            if (base != null) {
+                for (String name : new String[]{"getEntityPatch", "getUnparameterizedEntityPatch"}) {
+                    for (Class<?> first : new Class<?>[]{Entity.class, LivingEntity.class}) {
+                        Method found = lookup(caps, name, first, Class.class);
+                        if (found != null) {
+                            patchBaseClass = base;
+                            return found;
+                        }
+                    }
                 }
-                String name = method.getName().toLowerCase(java.util.Locale.ROOT);
-                if (!name.contains("entitypatch")) {
-                    continue;
-                }
-                Class<?>[] parameters = method.getParameterTypes();
-                if (parameters.length == 0 || !parameters[0].isAssignableFrom(LivingEntity.class)) {
-                    continue;
-                }
-                // The two-argument generic form is the one current Epic Fight
-                // ships, so it wins when both are present.
-                if (parameters.length == 2 && parameters[1] == Class.class
-                        && patchBaseClass != null) {
-                    return method;
-                }
-                if (parameters.length == 1 && oneArg == null) {
-                    oneArg = method;
+            }
+            for (Class<?> first : new Class<?>[]{Entity.class, LivingEntity.class}) {
+                Method found = lookup(caps, "getEntityPatch", first);
+                if (found != null) {
+                    patchBaseClass = null;
+                    return found;
                 }
             }
         }
-        if (oneArg != null) {
-            // Signals the single-argument call path below.
-            patchBaseClass = null;
+        return null;
+    }
+
+    private static Method lookup(Class<?> owner, String name, Class<?>... parameters) {
+        try {
+            Method method = owner.getMethod(name, parameters);
+            return java.lang.reflect.Modifier.isStatic(method.getModifiers()) ? method : null;
+        } catch (Throwable ignored) {
+            return null;
         }
-        return oneArg;
     }
 
     private static Class<?> resolvePatchBaseClass() {

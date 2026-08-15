@@ -25,10 +25,23 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link #sweep} once the gap is long enough, which is what lets a player just
  * talk — no key to hold, no command to type.
  *
- * <p><b>Who is being spoken to is decided once, at the first frame</b>, not at
- * the last. Otherwise a player who turns their head mid-sentence delivers the
- * back half of it to a different villager. The NPC chosen is the nearest one
- * inside the listening cone the player is facing.
+ * <h2>Threading</h2>
+ *
+ * <p><b>{@link #feed} runs on Simple Voice Chat's packet thread and must never
+ * touch the world.</b> An earlier version resolved the addressee there, which
+ * called {@code hasLineOfSight}; that reaches into the chunk source, which blocks
+ * on the server thread to load a chunk — while the server thread was itself
+ * blocked on this class's own lock inside {@code sweep}. The two waited on each
+ * other and the watchdog killed the server. So {@code feed} now does nothing but
+ * copy audio into a buffer.
+ *
+ * <p>What it <i>does</i> record is a cheap snapshot of where the speaker was and
+ * which way they were looking on the first frame — plain vector arithmetic over
+ * fields, no world access. {@link #sweep}, which runs on the server thread,
+ * resolves that aim into an actual NPC. The behaviour is unchanged from the
+ * outside: who you are talking to is still decided by where you were pointed when
+ * you <i>started</i> the sentence, so turning your head mid-sentence does not
+ * hand the back half of it to a different villager.
  *
  * <p>No Simple Voice Chat type appears here: the plugin decodes to plain PCM
  * before handing frames over, which keeps this class loadable on a server with
@@ -38,6 +51,8 @@ public final class VoiceSessions {
 
     /** Cap on one utterance, so a stuck transmit key cannot exhaust memory. */
     private static final int MAX_SAMPLES = AudioTools.VOICE_RATE * 30;
+    /** Cap on simultaneous speakers tracked, so a crowd cannot exhaust memory. */
+    private static final int MAX_SESSIONS = 32;
 
     private static final Map<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
 
@@ -45,10 +60,15 @@ public final class VoiceSessions {
         final List<short[]> frames = new ArrayList<>();
         int totalSamples;
         long lastPacketMillis;
-        /** Entity id of the NPC being addressed, fixed at the first frame. */
-        int targetEntityId = -1;
         /** Loudest frame seen, used to reject a run of near-silence. */
         float peakLoudness;
+        /**
+         * Where the speaker's eyes were and which way they faced on the first
+         * frame. Captured off-thread, but only from position and rotation
+         * fields — never from anything that can touch a chunk.
+         */
+        Vec3 eye = Vec3.ZERO;
+        Vec3 look = Vec3.ZERO;
     }
 
     private VoiceSessions() {
@@ -59,7 +79,8 @@ public final class VoiceSessions {
     }
 
     /**
-     * Records one decoded frame from a player.
+     * Records one decoded frame from a player. <b>Voice thread. No world access
+     * of any kind may be added to this method.</b>
      *
      * @param pcm mono 16-bit at {@link AudioTools#VOICE_RATE}
      */
@@ -67,32 +88,35 @@ public final class VoiceSessions {
         if (!NpcVoiceBridge.canListen() || pcm.length == 0) {
             return;
         }
-        Session session = SESSIONS.computeIfAbsent(player.getUUID(), key -> new Session());
-        synchronized (session) {
-            if (session.frames.isEmpty()) {
-                NpcEntity target = findAddressee(player);
-                if (target == null) {
-                    // Nobody is being spoken to. Do not buffer ordinary player
-                    // chatter — the whole village should not be transcribing
-                    // every conversation on the server.
-                    SESSIONS.remove(player.getUUID());
-                    return;
-                }
-                session.targetEntityId = target.getId();
-            }
-            if (session.totalSamples + pcm.length > MAX_SAMPLES) {
+        Session existing = SESSIONS.get(player.getUUID());
+        if (existing == null) {
+            if (SESSIONS.size() >= MAX_SESSIONS) {
                 return;
             }
-            session.frames.add(pcm);
-            session.totalSamples += pcm.length;
-            session.peakLoudness = Math.max(session.peakLoudness, AudioTools.loudness(pcm));
-            session.lastPacketMillis = System.currentTimeMillis();
+            Session started = new Session();
+            // Field reads only: position and rotation. Cheap, and safe to touch
+            // from another thread in a way that a chunk lookup is not.
+            started.eye = player.getEyePosition();
+            started.look = player.getViewVector(1.0F).normalize();
+            existing = SESSIONS.putIfAbsent(player.getUUID(), started);
+            if (existing == null) {
+                existing = started;
+            }
+        }
+        synchronized (existing) {
+            if (existing.totalSamples + pcm.length > MAX_SAMPLES) {
+                return;
+            }
+            existing.frames.add(pcm);
+            existing.totalSamples += pcm.length;
+            existing.peakLoudness = Math.max(existing.peakLoudness, AudioTools.loudness(pcm));
+            existing.lastPacketMillis = System.currentTimeMillis();
         }
     }
 
     /**
-     * Closes off any utterance that has gone quiet, and sends it to be
-     * recognised. Called once per server tick.
+     * Closes off any utterance that has gone quiet, resolves who it was aimed at,
+     * and sends it to be recognised. <b>Server thread, once per tick.</b>
      */
     public static void sweep(MinecraftServer server) {
         if (SESSIONS.isEmpty()) {
@@ -105,36 +129,51 @@ public final class VoiceSessions {
         while (iterator.hasNext()) {
             Map.Entry<UUID, Session> entry = iterator.next();
             Session session = entry.getValue();
+
             short[] utterance;
-            int targetId;
+            Vec3 eye;
+            Vec3 look;
+            // Everything under the lock is pure arithmetic on buffers. The world
+            // work below happens after it is released, so this monitor can never
+            // be held while anything blocks.
             synchronized (session) {
                 if (session.frames.isEmpty() || now - session.lastPacketMillis < gap) {
                     continue;
                 }
-                utterance = AudioTools.concat(session.frames, session.totalSamples);
-                targetId = session.targetEntityId;
-
                 boolean tooShort = session.totalSamples
                         < AudioTools.VOICE_RATE * PokeEFNPCConfig.voiceMinMillis() / 1000;
                 boolean tooQuiet = session.peakLoudness < 0.01F;
-                iterator.remove();
-                if (tooShort || tooQuiet) {
-                    // A cough, a knocked microphone, or the tail of somebody
-                    // else's sentence. Not worth waking the recogniser for.
-                    continue;
-                }
+                utterance = tooShort || tooQuiet
+                        ? null : AudioTools.concat(session.frames, session.totalSamples);
+                eye = session.eye;
+                look = session.look;
             }
-            dispatch(server, entry.getKey(), targetId, utterance);
+            iterator.remove();
+            if (utterance == null) {
+                // A cough, a knocked microphone, or the tail of somebody else's
+                // sentence. Not worth waking the recogniser for.
+                continue;
+            }
+            dispatch(server, entry.getKey(), eye, look, utterance);
         }
     }
 
     /** Hands one finished utterance to the recogniser, then to the NPC's brain. */
-    private static void dispatch(MinecraftServer server, UUID speakerId, int targetEntityId,
+    private static void dispatch(MinecraftServer server, UUID speakerId, Vec3 eye, Vec3 look,
                                  short[] utterance) {
         ServerPlayer player = server.getPlayerList().getPlayer(speakerId);
         if (player == null) {
             return;
         }
+        // Safe here: this is the server thread.
+        NpcEntity addressee = resolveAddressee(player, eye, look);
+        if (addressee == null) {
+            // Ordinary player chatter, not aimed at anybody. Never transcribed —
+            // the whole village should not be listening in on every conversation.
+            return;
+        }
+        int targetEntityId = addressee.getId();
+
         NpcVoiceBridge.submit(() -> {
             String heard = SpeechToText.transcribe(utterance);
             if (heard == null) {
@@ -158,18 +197,21 @@ public final class VoiceSessions {
     }
 
     /**
-     * The NPC a player is talking to: nearest, within range, roughly in front of
-     * them, and in line of sight.
+     * The NPC a player was talking to: nearest, within range, roughly along the
+     * aim they had when they started speaking, and in line of sight.
+     *
+     * <p><b>Server thread only</b> — {@code hasLineOfSight} can load a chunk.
      *
      * <p>The cone matters more than the range. Standing in a crowded square and
      * looking at the smith should reach the smith, and a village where everyone
      * within eight blocks answers at once would be unusable.
      */
     @Nullable
-    public static NpcEntity findAddressee(ServerPlayer player) {
+    public static NpcEntity resolveAddressee(ServerPlayer player, Vec3 eye, Vec3 look) {
         double range = PokeEFNPCConfig.voiceListenRange();
-        Vec3 eye = player.getEyePosition();
-        Vec3 look = player.getViewVector(1.0F).normalize();
+        if (look.lengthSqr() < 1.0E-6D) {
+            return null;
+        }
 
         List<NpcEntity> nearby = player.level().getEntitiesOfClass(NpcEntity.class,
                 player.getBoundingBox().inflate(range),
@@ -202,6 +244,16 @@ public final class VoiceSessions {
         return best;
     }
 
+    /**
+     * Who this player is addressing right now, from their current aim. For the
+     * typed-chat path, which already runs on the server thread.
+     */
+    @Nullable
+    public static NpcEntity findAddressee(ServerPlayer player) {
+        return resolveAddressee(player, player.getEyePosition(),
+                player.getViewVector(1.0F).normalize());
+    }
+
     private static double listeningRangeSquared() {
         double range = PokeEFNPCConfig.voiceListenRange() * 1.5D;
         return range * range;
@@ -210,6 +262,11 @@ public final class VoiceSessions {
     /** Convenience for the brain: whether this player is mid-utterance. */
     public static boolean isSpeaking(UUID player) {
         Session session = SESSIONS.get(player);
-        return session != null && !session.frames.isEmpty();
+        if (session == null) {
+            return false;
+        }
+        synchronized (session) {
+            return !session.frames.isEmpty();
+        }
     }
 }
