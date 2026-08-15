@@ -1,0 +1,16 @@
+{
+  "disabled": false,
+  "isHumanoid": true,
+  "faction": "neutral",
+  "model": "epicfight:entity/biped",
+  "armature": "epicfight:entity/biped",
+  "attributes": {
+    "impact": 0.5,
+    "armor_negation": 0.0,
+    "max_strikes": 1,
+    "attack_damage": 0.0,
+    "chasing_speed": 1.0,
+    "stun_armor": 0.0,
+    "scale": 1.0
+  }
+}
