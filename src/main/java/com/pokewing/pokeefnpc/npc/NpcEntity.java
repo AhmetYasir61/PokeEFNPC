@@ -7,6 +7,7 @@ import com.pokewing.pokeefnpc.ai.NpcDefendGoal;
 import com.pokewing.pokeefnpc.ai.NpcEmoteGoal;
 import com.pokewing.pokeefnpc.ai.NpcGuardOwnerGoal;
 import com.pokewing.pokeefnpc.ai.NpcOrdersGoal;
+import com.pokewing.pokeefnpc.ai.NpcSeekLeaderGoal;
 import com.pokewing.pokeefnpc.ai.NpcFleeThreatGoal;
 import com.pokewing.pokeefnpc.ai.NpcFortifyGoal;
 import com.pokewing.pokeefnpc.ai.NpcGreetGoal;
@@ -210,18 +211,19 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         // still runs from what would kill it.
         this.goalSelector.addGoal(3, new NpcOrdersGoal(this));
         this.goalSelector.addGoal(4, new NpcCollectGearGoal(this));
-        this.goalSelector.addGoal(5, new NpcStealGoal(this));
-        this.goalSelector.addGoal(6, new NpcGreetGoal(this));
-        this.goalSelector.addGoal(7, new NpcClaimSitesGoal(this));
-        this.goalSelector.addGoal(8, new NpcFortifyGoal(this));
+        this.goalSelector.addGoal(5, new NpcSeekLeaderGoal(this));
+        this.goalSelector.addGoal(6, new NpcStealGoal(this));
+        this.goalSelector.addGoal(7, new NpcGreetGoal(this));
+        this.goalSelector.addGoal(8, new NpcClaimSitesGoal(this));
+        this.goalSelector.addGoal(9, new NpcFortifyGoal(this));
         // The schedule is the backbone — everything above it is an interruption.
-        this.goalSelector.addGoal(9, new NpcScheduleGoal(this));
-        this.goalSelector.addGoal(10, new NpcEmoteGoal(this));
-        this.goalSelector.addGoal(11, new OpenDoorGoal(this, true));
-        this.goalSelector.addGoal(12, new MoveThroughVillageGoal(this, 0.6D, false, 4, () -> false));
-        this.goalSelector.addGoal(13, new WaterAvoidingRandomStrollGoal(this, 0.5D));
-        this.goalSelector.addGoal(14, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(15, new RandomLookAroundGoal(this));
+        this.goalSelector.addGoal(10, new NpcScheduleGoal(this));
+        this.goalSelector.addGoal(11, new NpcEmoteGoal(this));
+        this.goalSelector.addGoal(12, new OpenDoorGoal(this, true));
+        this.goalSelector.addGoal(13, new MoveThroughVillageGoal(this, 0.6D, false, 4, () -> false));
+        this.goalSelector.addGoal(14, new WaterAvoidingRandomStrollGoal(this, 0.5D));
+        this.goalSelector.addGoal(15, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(16, new RandomLookAroundGoal(this));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this).setAlertOthers(NpcEntity.class));
         this.targetSelector.addGoal(2, new NpcDefendGoal(this));
@@ -450,6 +452,142 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
 
 
     // ------------------------------------------------------------- allegiance
+
+    /**
+     * Where this NPC is marching when its owner is not in the world — normally
+     * the spot the owner fell. Cleared once it arrives.
+     */
+    @Nullable
+    private net.minecraft.core.BlockPos rallyPoint;
+
+    @Nullable
+    public net.minecraft.core.BlockPos rallyPoint() {
+        return this.rallyPoint;
+    }
+
+    public void setRallyPoint(net.minecraft.core.BlockPos pos) {
+        this.rallyPoint = pos;
+    }
+
+    public void clearRallyPoint() {
+        this.rallyPoint = null;
+    }
+
+
+
+    /** Set on the one raised to stand in for a leader who is gone for good. */
+    private boolean regent;
+
+    public boolean isRegent() {
+        return this.regent;
+    }
+
+    /**
+     * Raises this one to stand in for a leader who will not be coming back.
+     *
+     * <p>The company is released rather than inherited: nobody is born owing
+     * service to somebody they have never met. What the regent carries is the
+     * job of finding a new banner — see {@code NpcSeekLeaderGoal} — while
+     * everyone else goes back to the life they had before they were recruited.
+     */
+    public void becomeRegent() {
+        this.allegiance.release();
+        this.entityData.set(DATA_STANCE, Allegiance.Stance.OFF_DUTY.ordinal());
+        this.regent = true;
+        clearRallyPoint();
+        if (!this.role.isDefender()) {
+            applyRole(NpcRole.CAPTAIN, false);
+        }
+        this.mood.latch(this.personality, Emotion.FOCUSED, 200);
+        pushFaceToClients();
+    }
+
+
+    /**
+     * The leader is gone for good. Back to your own life.
+     *
+     * <p>Deliberately not a demotion: the soldier keeps the role, the gear and
+     * everything it learned about people. It simply answers to nobody again, and
+     * carries on with the work of the settlement it stands in — which is what
+     * keeps a town alive after its lord is lost rather than leaving forty armed
+     * people standing in a field waiting for orders.
+     */
+    public void leaderLost() {
+        this.allegiance.release();
+        this.entityData.set(DATA_STANCE, Allegiance.Stance.OFF_DUTY.ordinal());
+        clearRallyPoint();
+        this.mood.latch(this.personality, Emotion.SAD, 200);
+        pushFaceToClients();
+    }
+
+    /** Says the regent's piece to somebody who might take the company on. */
+    public void offerService(Player player) {
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            return;
+        }
+        speak(serverPlayer, "pokeefnpc.dialogue.regent_offer");
+        playEmote(Emote.BOW);
+        // Willing, but still not free: the player has to offer the commission
+        // with a soldier's egg, exactly as with anybody else.
+        this.reputation.adjust(player.getUUID(), 8.0F);
+    }
+
+    /**
+     * Whether this one is senior enough to be a commander rather than a ranker.
+     *
+     * <p>It decides who escorts the leader personally and who stays to hold the
+     * ground. Rank does it: a captain or a knight walks back to you, a soldier
+     * keeps the wall manned. Without that split, a leader's death and respawn
+     * would empty the garrison and the base would fall while everyone was busy
+     * being loyal.
+     */
+    public boolean isCommander() {
+        return this.role == NpcRole.CAPTAIN || this.role == NpcRole.KNIGHT;
+    }
+
+    /**
+     * Called when a fallen owner is back in the world.
+     *
+     * @param escort true for the handful who march to the leader; false for
+     *               everyone else, who go back to holding the place they belong
+     */
+    public void ownerReturned(net.minecraft.core.BlockPos leaderPos, boolean escort) {
+        if (!this.allegiance.stance().onDuty()) {
+            return;
+        }
+        this.mood.latch(this.personality, Emotion.HAPPY, 120);
+        pushFaceToClients();
+        if (escort) {
+            // Marches, does not blink: the order goal walks them home to you.
+            setStance(Allegiance.Stance.FOLLOW);
+            setRallyPoint(leaderPos);
+            return;
+        }
+        clearRallyPoint();
+        // Back to the ground they are meant to hold — their post if they had one,
+        // otherwise their home, otherwise where they stand.
+        net.minecraft.core.BlockPos station = this.allegiance.post();
+        if (station == null) {
+            station = this.homePos != null ? this.homePos : blockPosition();
+        }
+        this.allegiance.setStance(Allegiance.Stance.HOLD);
+        this.allegiance.setPost(station);
+        this.entityData.set(DATA_STANCE, Allegiance.Stance.HOLD.ordinal());
+    }
+
+    /**
+     * Called when this NPC's owner dies: every soldier of theirs sets out on
+     * foot for the place it happened.
+     */
+    public void ownerFell(net.minecraft.core.BlockPos where) {
+        if (!this.allegiance.stance().onDuty()) {
+            return;
+        }
+        setRallyPoint(where);
+        this.mood.latch(this.personality, Emotion.ANGRY, 200);
+        pushFaceToClients();
+    }
+
 
     public Allegiance allegiance() {
         return this.allegiance;
@@ -1049,6 +1187,10 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         tag.putBoolean("Natural", this.natural);
         tag.putString("Skin", skinName());
         tag.put("Allegiance", this.allegiance.save());
+        tag.putBoolean("Regent", this.regent);
+        if (this.rallyPoint != null) {
+            tag.put("Rally", net.minecraft.nbt.NbtUtils.writeBlockPos(this.rallyPoint));
+        }
         if (this.settlementId != null) {
             tag.putUUID("Settlement", this.settlementId);
         }
@@ -1088,6 +1230,9 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         setSkinName(tag.getString("Skin"));
         this.allegiance = tag.contains("Allegiance")
                 ? Allegiance.load(tag.getCompound("Allegiance")) : new Allegiance();
+        this.rallyPoint = tag.contains("Rally")
+                ? net.minecraft.nbt.NbtUtils.readBlockPos(tag.getCompound("Rally")) : null;
+        this.regent = tag.getBoolean("Regent");
         this.entityData.set(DATA_STANCE, this.allegiance.stance().ordinal());
         this.settlementId = tag.hasUUID("Settlement") ? tag.getUUID("Settlement") : null;
         this.homePos = tag.contains("Home")

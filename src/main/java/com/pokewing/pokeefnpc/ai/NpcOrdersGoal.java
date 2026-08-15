@@ -52,7 +52,9 @@ public class NpcOrdersGoal extends Goal {
         // HOLD and PATROL are posts, not escorts: they are kept whether or not
         // the owner is anywhere nearby, which is the entire point of leaving
         // somebody on a gate.
-        return this.owner != null || allegiance.stance() != Allegiance.Stance.FOLLOW;
+        return this.owner != null
+                || allegiance.stance() != Allegiance.Stance.FOLLOW
+                || this.npc.rallyPoint() != null;
     }
 
     @Override
@@ -79,6 +81,7 @@ public class NpcOrdersGoal extends Goal {
 
     private void follow() {
         if (this.owner == null) {
+            rallyToFallenOwner();
             return;
         }
         this.npc.getLookControl().setLookAt(this.owner, 10.0F, this.npc.getMaxHeadXRot());
@@ -92,14 +95,13 @@ public class NpcOrdersGoal extends Goal {
         }
         this.repathCooldown = 10;
         double speed = distance > HURRY_DISTANCE ? 1.15D : 0.85D;
-        // Too far to walk back from, and the owner is somewhere loaded: step
-        // across rather than trail hopelessly behind. Anything less makes a
-        // follower useless the moment its owner rides or sprints away.
-        if (distance > 900.0D && this.npc.level() instanceof ServerLevel) {
-            teleportNearOwner();
-            return;
+        // No teleporting. A soldier that blinks to your side is a spawner, not a
+        // soldier — the walk, and whatever it has to cut through on the way, is
+        // the part worth having. When the path runs out it marches on the last
+        // known heading instead, so distance is a delay rather than a give-up.
+        if (!this.npc.getNavigation().moveTo(this.owner, speed)) {
+            marchToward(this.owner.blockPosition(), speed);
         }
-        this.npc.getNavigation().moveTo(this.owner, speed);
     }
 
     private void hold() {
@@ -140,23 +142,56 @@ public class NpcOrdersGoal extends Goal {
         return post;
     }
 
-    private void teleportNearOwner() {
-        BlockPos target = this.owner.blockPosition();
-        for (int attempt = 0; attempt < 8; attempt++) {
-            int x = target.getX() + this.npc.getRandom().nextInt(5) - 2;
-            int z = target.getZ() + this.npc.getRandom().nextInt(5) - 2;
-            BlockPos candidate = new BlockPos(x, target.getY(), z);
-            if (this.npc.level().noCollision(this.npc,
-                    this.npc.getBoundingBox().move(
-                            candidate.getX() + 0.5D - this.npc.getX(),
-                            candidate.getY() - this.npc.getY(),
-                            candidate.getZ() + 0.5D - this.npc.getZ()))) {
-                this.npc.moveTo(candidate.getX() + 0.5D, candidate.getY(), candidate.getZ() + 0.5D,
-                        this.npc.getYRot(), this.npc.getXRot());
-                this.npc.getNavigation().stop();
-                return;
+    /**
+     * Walks toward a place that is too far to path to in one go.
+     *
+     * <p>Minecraft's pathfinder only searches a limited radius, so a target
+     * across the map returns no path at all and a naive follower simply stands
+     * still. Aiming at a point part-way there gives the pathfinder something it
+     * can solve, and repeating that each time it arrives is a march: slow,
+     * interruptible by every fight on the road, and exactly what was wanted
+     * instead of a teleport.
+     */
+    private void marchToward(BlockPos destination, double speed) {
+        var from = this.npc.blockPosition();
+        double dx = destination.getX() - from.getX();
+        double dz = destination.getZ() - from.getZ();
+        double length = Math.sqrt(dx * dx + dz * dz);
+        if (length < 1.0E-3D) {
+            return;
+        }
+        double step = Math.min(length, 24.0D);
+        double x = from.getX() + dx / length * step;
+        double z = from.getZ() + dz / length * step;
+        this.npc.getNavigation().moveTo(x, from.getY(), z, speed);
+    }
+
+    /**
+     * Where a soldier goes when its owner is not in the world.
+     *
+     * <p>If the owner fell, the place they fell is the rally point: the guard
+     * marches to it and cuts through whatever is in the way, which is both what
+     * a sworn soldier would do and what makes a death worth avenging rather than
+     * a respawn timer.
+     */
+    private boolean rallyToFallenOwner() {
+        BlockPos rally = this.npc.rallyPoint();
+        if (rally == null) {
+            return false;
+        }
+        if (this.npc.blockPosition().distSqr(rally) <= POST_SLACK * POST_SLACK) {
+            this.npc.clearRallyPoint();
+            this.npc.getNavigation().stop();
+            return true;
+        }
+        if (--this.repathCooldown <= 0) {
+            this.repathCooldown = 20;
+            if (!this.npc.getNavigation().moveTo(rally.getX() + 0.5D, rally.getY(),
+                    rally.getZ() + 0.5D, 1.0D)) {
+                marchToward(rally, 1.0D);
             }
         }
+        return true;
     }
 
     private Player ownerPlayer() {

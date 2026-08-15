@@ -47,6 +47,13 @@ public class ServerEvents {
     private int settlementTimer;
     private int populationTimer;
     private int scoutTimer;
+    private int successionTimer;
+
+    /** How often companies are checked for a leader who is never coming back. */
+    private static final int SUCCESSION_INTERVAL = 2400;
+
+    /** How many commanders peel off to rejoin a respawned leader. */
+    private static final int MAX_ESCORTS = 2;
 
     @SubscribeEvent
     public void onLevelTick(TickEvent.LevelTickEvent event) {
@@ -64,6 +71,13 @@ public class ServerEvents {
         if (++this.scoutTimer >= SCOUT_INTERVAL) {
             this.scoutTimer = 0;
             creditScouting(level);
+        }
+        // Rare on purpose: it walks every loaded NPC and a ban is not something
+        // that needs noticing within the second.
+        if (++this.successionTimer >= SUCCESSION_INTERVAL
+                && level.dimension() == net.minecraft.world.level.Level.OVERWORLD) {
+            this.successionTimer = 0;
+            checkForLostLeaders(level.getServer());
         }
         // Checked every tick and cheap when nobody is talking: an utterance ends
         // when the packets stop, so the only way to notice is to keep looking.
@@ -260,4 +274,126 @@ public class ServerEvents {
         PokeEFNPC.LOGGER.debug("PokeEFNPC: {} was killed by {} in {}",
                 dead.getName().getString(), culprit.getName().getString(), settlement.name());
     }
+
+    /**
+     * When a player falls, everyone sworn to them sets out for the spot.
+     *
+     * <p>On foot, from wherever they were — no teleport. The march is the point:
+     * a garrison that converges on the place its leader died, fighting through
+     * whatever is between, reads as loyalty. A garrison that blinks to the
+     * corpse reads as a spawner.
+     */
+    @SubscribeEvent
+    public void onPlayerDeath(net.minecraftforge.event.entity.living.LivingDeathEvent event) {
+        if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)) {
+            return;
+        }
+        var where = player.blockPosition();
+        // A generous radius: soldiers left guarding a keep two hundred blocks
+        // away should still hear about it and start walking.
+        var bounds = player.getBoundingBox().inflate(256.0D);
+        for (com.pokewing.pokeefnpc.npc.NpcEntity npc
+                : player.level().getEntitiesOfClass(
+                        com.pokewing.pokeefnpc.npc.NpcEntity.class, bounds)) {
+            if (npc.allegiance().isOwnedBy(player.getUUID())) {
+                npc.ownerFell(where);
+            }
+        }
+    }
+
+
+    /**
+     * When a fallen leader is back on their feet, the garrison stands down.
+     *
+     * <p>Commanders — captains and knights — set out to rejoin the leader, on
+     * foot like everything else. Everyone else goes back to the ground they are
+     * meant to hold, because a base that empties every time its owner respawns
+     * is a base that gets taken while nobody is looking.
+     */
+    @SubscribeEvent
+    public void onPlayerRespawn(net.minecraftforge.event.entity.player.PlayerEvent.PlayerRespawnEvent event) {
+        if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)) {
+            return;
+        }
+        var where = player.blockPosition();
+        int escorts = 0;
+        for (var level : player.server.getAllLevels()) {
+            for (com.pokewing.pokeefnpc.npc.NpcEntity npc
+                    : level.getEntities(net.minecraft.world.level.entity.EntityTypeTest.forClass(
+                            com.pokewing.pokeefnpc.npc.NpcEntity.class),
+                            npc -> npc.allegiance().isOwnedBy(player.getUUID()))) {
+                // A guard of two, not the whole army: any more and the walls are
+                // bare for as long as the walk takes.
+                boolean escort = npc.isCommander() && escorts < MAX_ESCORTS
+                        && npc.level() == player.level();
+                if (escort) {
+                    escorts++;
+                }
+                npc.ownerReturned(where, escort);
+            }
+        }
+    }
+
+
+    /**
+     * Checks whether any company's leader is gone for good, and appoints a
+     * regent if so.
+     *
+     * <p>"Gone for good" means banned, not merely logged off — somebody who
+     * quits for the night still has a garrison waiting for them in the morning.
+     * A ban is the one signal the server can give that a player is genuinely not
+     * coming back, so it is the one used.
+     *
+     * <p>The succession itself is small and deliberate: the most senior soldier
+     * still standing is raised to regent and sets out looking for a new leader;
+     * everybody else is released and goes back to the work of the settlement, so
+     * a lost lord costs a town its lord rather than its people.
+     */
+    private void checkForLostLeaders(net.minecraft.server.MinecraftServer server) {
+        java.util.Map<java.util.UUID, java.util.List<com.pokewing.pokeefnpc.npc.NpcEntity>> companies =
+                new java.util.HashMap<>();
+        for (var level : server.getAllLevels()) {
+            for (com.pokewing.pokeefnpc.npc.NpcEntity npc
+                    : level.getEntities(net.minecraft.world.level.entity.EntityTypeTest.forClass(
+                            com.pokewing.pokeefnpc.npc.NpcEntity.class),
+                            candidate -> candidate.allegiance().isOwned())) {
+                companies.computeIfAbsent(npc.allegiance().owner(),
+                        key -> new java.util.ArrayList<>()).add(npc);
+            }
+        }
+        for (var entry : companies.entrySet()) {
+            if (!isGoneForGood(server, entry.getKey())) {
+                continue;
+            }
+            java.util.List<com.pokewing.pokeefnpc.npc.NpcEntity> company = entry.getValue();
+            // Rank first, then whoever is in the best shape: a wounded captain
+            // still outranks a healthy recruit, but a dead one leads nobody.
+            company.sort(java.util.Comparator
+                    .comparing(com.pokewing.pokeefnpc.npc.NpcEntity::isCommander)
+                    .thenComparing(com.pokewing.pokeefnpc.npc.NpcEntity::getHealth)
+                    .reversed());
+            boolean appointed = false;
+            for (com.pokewing.pokeefnpc.npc.NpcEntity npc : company) {
+                if (!appointed && npc.isAlive()) {
+                    npc.becomeRegent();
+                    appointed = true;
+                } else {
+                    npc.leaderLost();
+                }
+            }
+        }
+    }
+
+    /** Banned, and not simply logged out. */
+    private boolean isGoneForGood(net.minecraft.server.MinecraftServer server,
+                                  java.util.UUID owner) {
+        if (owner == null || server.getPlayerList().getPlayer(owner) != null) {
+            return false;
+        }
+        var profile = server.getProfileCache() == null
+                ? java.util.Optional.<com.mojang.authlib.GameProfile>empty()
+                : server.getProfileCache().get(owner);
+        return profile.isPresent() && server.getPlayerList().getBans().isBanned(profile.get());
+    }
+
 }

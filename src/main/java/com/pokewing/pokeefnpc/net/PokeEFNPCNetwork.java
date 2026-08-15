@@ -31,6 +31,10 @@ public final class PokeEFNPCNetwork {
                 OpenNpcMenuPacket::encode, OpenNpcMenuPacket::decode, OpenNpcMenuPacket::handle);
         channel.registerMessage(nextId++, NpcActionPacket.class,
                 NpcActionPacket::encode, NpcActionPacket::decode, NpcActionPacket::handle);
+        // Travels in both directions: the roster comes back on the same type
+        // that asked for it. See CommandPacket.
+        channel.registerMessage(nextId++, CommandPacket.class,
+                CommandPacket::encode, CommandPacket::decode, CommandPacket::handle);
     }
 
     public static void sendTo(ServerPlayer player, Object packet) {

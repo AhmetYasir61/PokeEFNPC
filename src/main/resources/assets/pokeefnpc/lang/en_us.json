@@ -258,5 +258,17 @@
   "pokeefnpc.dialogue.already_yours": "I already serve you.",
   "pokeefnpc.dialogue.sworn_elsewhere": "I'm sworn to another.",
   "pokeefnpc.dialogue.enlist_refused": "I don't know you well enough to take up arms for you.",
-  "pokeefnpc.dialogue.enlist_accepted": "Then I'll fight for you. Say the word."
+  "pokeefnpc.dialogue.enlist_accepted": "Then I'll fight for you. Say the word.",
+  "key.categories.pokeefnpc": "PokeEFNPC",
+  "key.pokeefnpc.command": "Field command",
+  "pokeefnpc.command.title": "Command",
+  "pokeefnpc.command.count": "%s under your command",
+  "pokeefnpc.command.order.off_duty": "Stand down",
+  "pokeefnpc.command.order.follow": "Follow",
+  "pokeefnpc.command.order.hold": "Hold",
+  "pokeefnpc.command.order.patrol": "Patrol",
+  "pokeefnpc.command.order_box": "Order",
+  "pokeefnpc.command.order_hint": "Say something to them...",
+  "pokeefnpc.command.send": "Send",
+  "pokeefnpc.dialogue.regent_offer": "Our lord is gone. The company still stands — and it needs a banner to stand under."
 }

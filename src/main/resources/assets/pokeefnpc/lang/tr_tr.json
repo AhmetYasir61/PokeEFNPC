@@ -258,5 +258,17 @@
   "pokeefnpc.dialogue.already_yours": "Zaten sana hizmet ediyorum.",
   "pokeefnpc.dialogue.sworn_elsewhere": "Ben bir başkasına bağlıyım.",
   "pokeefnpc.dialogue.enlist_refused": "Senin için silah kuşanacak kadar tanımıyorum seni.",
-  "pokeefnpc.dialogue.enlist_accepted": "O hâlde senin için savaşırım. Emret."
+  "pokeefnpc.dialogue.enlist_accepted": "O hâlde senin için savaşırım. Emret.",
+  "key.categories.pokeefnpc": "PokeEFNPC",
+  "key.pokeefnpc.command": "Saha komutası",
+  "pokeefnpc.command.title": "Komuta",
+  "pokeefnpc.command.count": "Emrinde %s kişi",
+  "pokeefnpc.command.order.off_duty": "Serbest",
+  "pokeefnpc.command.order.follow": "Takip et",
+  "pokeefnpc.command.order.hold": "Burayı tut",
+  "pokeefnpc.command.order.patrol": "Devriye",
+  "pokeefnpc.command.order_box": "Emir",
+  "pokeefnpc.command.order_hint": "Onlara bir şey söyle...",
+  "pokeefnpc.command.send": "Gönder",
+  "pokeefnpc.dialogue.regent_offer": "Efendimiz gitti. Bölük hâlâ ayakta — ama altında duracak bir sancağa ihtiyacı var."
 }
