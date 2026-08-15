@@ -1,7 +1,9 @@
 package com.pokewing.pokeefnpc.client;
 
 import com.pokewing.pokeefnpc.PokeEFNPC;
+import com.pokewing.pokeefnpc.PokeEFNPCClientConfig;
 import com.pokewing.pokeefnpc.client.screen.NpcScreen;
+import com.pokewing.pokeefnpc.compat.PokeFaceBridge;
 import com.pokewing.pokeefnpc.registry.ModEntities;
 import com.pokewing.pokeefnpc.registry.ModMenus;
 
@@ -13,6 +15,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.EntityRenderersEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.config.ModConfigEvent;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 
 /** Client-side registration. */
@@ -31,6 +34,20 @@ public final class PokeEFNPCClient {
     @SubscribeEvent
     public static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(ModEntities.NPC.get(), NpcRenderer::new);
+    }
+
+    /**
+     * Throws away the built face profiles when the eye settings change.
+     *
+     * <p>Forge fires this when the file is edited on disk as well as when it is
+     * first loaded, which is what turns tuning the base character into a
+     * look-and-adjust loop instead of a restart each time.
+     */
+    @SubscribeEvent
+    public static void onConfigChanged(ModConfigEvent event) {
+        if (event.getConfig().getSpec() == PokeEFNPCClientConfig.SPEC) {
+            PokeFaceBridge.invalidateProfiles();
+        }
     }
 
     @SubscribeEvent

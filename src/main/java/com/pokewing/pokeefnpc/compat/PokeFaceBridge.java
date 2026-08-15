@@ -2,6 +2,7 @@ package com.pokewing.pokeefnpc.compat;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.pokewing.pokeefnpc.PokeEFNPC;
+import com.pokewing.pokeefnpc.PokeEFNPCClientConfig;
 import com.pokewing.pokeefnpc.npc.NpcEntity;
 import com.pokewing.pokeefnpc.npc.NpcRole;
 
@@ -56,7 +57,11 @@ public final class PokeFaceBridge {
     private static Field blinkRightField;
     private static Object[] expressionValues;
 
-    /** One profile per role, built once — every guard has the same eyes. */
+    /**
+     * One profile per role, built once — every guard has the same eyes. Cleared
+     * by {@link #invalidateProfiles()} whenever the base character changes, so
+     * editing the config is a look-and-adjust loop rather than a restart.
+     */
     private static final Map<NpcRole, Object> ROLE_PROFILES = new EnumMap<>(NpcRole.class);
 
     private PokeFaceBridge() {
@@ -184,9 +189,20 @@ public final class PokeFaceBridge {
         return expressionValues[Math.floorMod(ordinal, expressionValues.length)];
     }
 
+    /** Throws away the built profiles, so the next frame rebuilds from config. */
+    public static synchronized void invalidateProfiles() {
+        ROLE_PROFILES.clear();
+    }
+
     /**
-     * A face profile per role, so the population is not all one person: a soldier
-     * has a harder brow than a baker, a mage's eyes glow, a beggar's are dull.
+     * The face every NPC is drawn from.
+     *
+     * <p>There is one base character, configured in {@code pokeefnpc-client.toml},
+     * and it is applied to everybody. Roles then vary it — a soldier has a harder
+     * brow than a baker, a mage's eyes glow — but only as a nudge on top of the
+     * base, and only while {@code roleVariation} is on. Turning that off gives
+     * one identical face across the whole population, which is what you want
+     * while tuning the base: change a value, look at any NPC, see it.
      */
     private static Object profileFor(NpcRole role) {
         Object cached = ROLE_PROFILES.get(role);
@@ -197,29 +213,9 @@ public final class PokeFaceBridge {
             Object profile = profileConstructor.newInstance();
             Class<?> type = profile.getClass();
 
-            setFloat(type, profile, "browThickness", switch (role.category()) {
-                case MARTIAL, CRIMINAL -> 0.75F;
-                case NOBLE, ARCANE -> 0.45F;
-                default -> 0.55F;
-            });
-            // How steeply the brows can tilt caps how angry a face can look, so
-            // a hot-tempered role is given more room to scowl.
-            setFloat(type, profile, "browTilt", 1.1F + role.temper() * 0.8F);
-
-            int eye = switch (role.category()) {
-                case MARTIAL -> 0xFF5A6B7A;
-                case ARCANE -> 0xFF7E5AA8;
-                case CRIMINAL -> 0xFF6B5A3A;
-                case NOBLE -> 0xFF3A6BA5;
-                case TRADE -> 0xFF4A7A5A;
-                case GUILD -> 0xFF8A5A3A;
-                case COMMONER -> 0xFF5A4A3A;
-            };
-            setInt(type, profile, "eyeColor", eye);
-            setInt(type, profile, "eyeColorRight", eye);
-
-            if (role == NpcRole.MAGE || role == NpcRole.SEER) {
-                setBoolean(type, profile, "eyeGlow", true);
+            applyBase(type, profile);
+            if (PokeEFNPCClientConfig.roleVariation()) {
+                applyRoleVariation(type, profile, role);
             }
             ROLE_PROFILES.put(role, profile);
             return profile;
@@ -228,6 +224,96 @@ public final class PokeFaceBridge {
                     role.key(), t.toString());
             return null;
         }
+    }
+
+    /** The configured base character, written onto a fresh profile. */
+    private static void applyBase(Class<?> type, Object profile) {
+        String style = PokeEFNPCClientConfig.style();
+        if (!style.isBlank()) {
+            setString(type, profile, "style", style);
+        }
+
+        setFloat(type, profile, "eyeSpacing", PokeEFNPCClientConfig.eyeSpacing());
+        setFloat(type, profile, "eyeScale", PokeEFNPCClientConfig.eyeScale());
+        setFloat(type, profile, "eyeOffsetX", PokeEFNPCClientConfig.eyeOffsetX());
+        setFloat(type, profile, "eyeOffsetY", PokeEFNPCClientConfig.eyeOffsetY());
+        setFloat(type, profile, "eyeConverge", PokeEFNPCClientConfig.eyeConverge());
+        setFloat(type, profile, "irisScale", PokeEFNPCClientConfig.irisScale());
+        setFloat(type, profile, "pupilScale", PokeEFNPCClientConfig.pupilScale());
+        setBoolean(type, profile, "drawSclera", PokeEFNPCClientConfig.drawSclera());
+
+        setInt(type, profile, "eyeColor", PokeEFNPCClientConfig.eyeColor());
+        setInt(type, profile, "eyeColorRight", PokeEFNPCClientConfig.eyeColorRight());
+        setInt(type, profile, "scleraColor", PokeEFNPCClientConfig.scleraColor());
+        setInt(type, profile, "scleraColorRight", PokeEFNPCClientConfig.scleraColor());
+        setInt(type, profile, "pupilColor", PokeEFNPCClientConfig.pupilColor());
+        setInt(type, profile, "pupilColorRight", PokeEFNPCClientConfig.pupilColor());
+        setInt(type, profile, "lineColor", PokeEFNPCClientConfig.lineColor());
+
+        setBoolean(type, profile, "eyeGlow", PokeEFNPCClientConfig.eyeGlow());
+        setFloat(type, profile, "eyeGlowSpread", PokeEFNPCClientConfig.eyeGlowSpread());
+
+        setBoolean(type, profile, "drawBrows", PokeEFNPCClientConfig.drawBrows());
+        setFloat(type, profile, "browThickness", PokeEFNPCClientConfig.browThickness());
+        setFloat(type, profile, "browLength", PokeEFNPCClientConfig.browLength());
+        setFloat(type, profile, "browOffsetY", PokeEFNPCClientConfig.browOffsetY());
+        setFloat(type, profile, "browTilt", PokeEFNPCClientConfig.browTilt());
+
+        setFloat(type, profile, "mouthScale", PokeEFNPCClientConfig.mouthScale());
+        setFloat(type, profile, "mouthOffsetY", PokeEFNPCClientConfig.mouthOffsetY());
+    }
+
+    /**
+     * Role flavour, applied relative to the base rather than replacing it, so a
+     * soldier stays recognisably the same character as the baker — just sterner.
+     */
+    private static void applyRoleVariation(Class<?> type, Object profile, NpcRole role) {
+        float thickness = PokeEFNPCClientConfig.browThickness() * switch (role.category()) {
+            case MARTIAL, CRIMINAL -> 1.35F;
+            case NOBLE, ARCANE -> 0.8F;
+            default -> 1.0F;
+        };
+        setFloat(type, profile, "browThickness", thickness);
+
+        // How steeply the brows can tilt caps how angry a face can look, so a
+        // hot-tempered role is given more room to scowl.
+        setFloat(type, profile, "browTilt",
+                PokeEFNPCClientConfig.browTilt() * (0.8F + role.temper() * 0.55F));
+
+        // The base iris is pulled toward the role's own colour rather than
+        // replaced by it, so recolouring the base still moves every NPC.
+        int tint = switch (role.category()) {
+            case MARTIAL -> 0xFF5A6B7A;
+            case ARCANE -> 0xFF7E5AA8;
+            case CRIMINAL -> 0xFF6B5A3A;
+            case NOBLE -> 0xFF3A6BA5;
+            case TRADE -> 0xFF4A7A5A;
+            case GUILD -> 0xFF8A5A3A;
+            case COMMONER -> 0xFF5A4A3A;
+        };
+        setInt(type, profile, "eyeColor",
+                blend(PokeEFNPCClientConfig.eyeColor(), tint, 0.5F));
+        setInt(type, profile, "eyeColorRight",
+                blend(PokeEFNPCClientConfig.eyeColorRight(), tint, 0.5F));
+
+        if (role == NpcRole.MAGE || role == NpcRole.SEER) {
+            setBoolean(type, profile, "eyeGlow", true);
+        }
+    }
+
+    /** Mixes two ARGB colours per channel, keeping the first one's alpha. */
+    private static int blend(int base, int tint, float amount) {
+        int alpha = (base >>> 24) & 0xFF;
+        int red = channel(base, 16, tint, amount);
+        int green = channel(base, 8, tint, amount);
+        int blue = channel(base, 0, tint, amount);
+        return (alpha << 24) | (red << 16) | (green << 8) | blue;
+    }
+
+    private static int channel(int base, int shift, int tint, float amount) {
+        int from = (base >>> shift) & 0xFF;
+        int to = (tint >>> shift) & 0xFF;
+        return Math.round(from + (to - from) * amount);
     }
 
     private static void setFloat(Class<?> type, Object target, String field, float value) {
@@ -248,6 +334,13 @@ public final class PokeFaceBridge {
     private static void setBoolean(Class<?> type, Object target, String field, boolean value) {
         try {
             type.getField(field).setBoolean(target, value);
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void setString(Class<?> type, Object target, String field, String value) {
+        try {
+            type.getField(field).set(target, value);
         } catch (Throwable ignored) {
         }
     }

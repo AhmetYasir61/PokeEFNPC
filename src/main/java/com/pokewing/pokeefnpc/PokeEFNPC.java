@@ -50,6 +50,10 @@ public class PokeEFNPC {
         bus.addListener(this::registerAttributes);
 
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, PokeEFNPCConfig.SPEC);
+        // How the faces look is the one thing that is nobody else's business, so
+        // it is a client config: a player can retune the eyes on a server they
+        // do not own. A dedicated server loads the spec and simply never reads it.
+        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, PokeEFNPCClientConfig.SPEC);
         MinecraftForge.EVENT_BUS.register(new com.pokewing.pokeefnpc.event.ServerEvents());
     }
 
