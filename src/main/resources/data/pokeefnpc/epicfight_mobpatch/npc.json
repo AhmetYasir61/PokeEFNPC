@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "Gives pokeefnpc:npc an Epic Fight combat patch.",
+    "",
+    "Epic Fight builds patches only for entity types it has been told about, and",
+    "for a mod's own mob the supported way to tell it is this datapack folder:",
+    "data/<namespace>/epicfight_mobpatch/<entity path>.json, resolved against",
+    "ForgeRegistries.ENTITY_TYPES. So this file's location IS the binding to",
+    "pokeefnpc:npc - renaming it detaches the patch.",
+    "",
+    "Without this file the NPCs still fight, just with vanilla melee.",
+    "Epic Fight ignores the file entirely when it is not installed."
+  ],
+
+  "disabled": false,
+
+  "isHumanoid": true,
+  "faction": "neutral",
+
+  "model": "epicfight:entity/biped",
+  "armature": "epicfight:entity/biped",
+
+  "attributes": {
+    "impact": 0.5,
+    "armor_negation": 0.0,
+    "max_strikes": 1,
+    "attack_damage": 0.0,
+    "chasing_speed": 1.0,
+    "stun_armor": 0.0,
+    "scale": 1.0
+  },
+
+  "default_livingmotions": [],
+  "humanoid_weapon_motions": [],
+  "stun_animations": {},
+  "combat_behavior": []
+}

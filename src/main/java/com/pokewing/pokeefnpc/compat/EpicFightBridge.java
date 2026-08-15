@@ -6,6 +6,7 @@ import com.pokewing.pokeefnpc.npc.NpcEntity;
 
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fml.ModList;
 
 import java.lang.reflect.Method;
@@ -50,22 +51,23 @@ public final class EpicFightBridge {
             "yesman.epicfight.api.animation.AnimationManager",
     };
 
-    /** Class names Epic Fight has used for the base patch type. */
-    private static final String[] PATCH_BASE_CLASSES = {
-            "yesman.epicfight.world.capabilities.entitypatch.EntityPatch",
-            "yesman.epicfight.capabilities.entity.CapabilityEntity",
-    };
-
     private static boolean resolved;
     private static boolean present;
 
-    private static Method getEntityPatch;
     /**
-     * Epic Fight's lookup is generic — {@code getEntityPatch(E entity, Class<C> toType)}
-     * — so the second argument has to be supplied. This is the base patch class
-     * to ask for, resolved once alongside the method.
+     * Epic Fight's entity-patch capability.
+     *
+     * <p>Reached through the <b>field</b>, never through a method. That is not a
+     * style preference: {@code EpicFightCapabilities} declares
+     * {@code getLocalPlayerPatch(LocalPlayer)}, and asking Java for any method on
+     * a class forces it to resolve every method signature on that class —
+     * including that client-only parameter, which a dedicated server refuses to
+     * load. Method reflection on this class can therefore never work server-side.
+     * A single field lookup touches only the field's own type, which is
+     * {@code Capability<EntityPatch>} and perfectly safe on both sides.
      */
-    private static Class<?> patchBaseClass;
+    private static Capability<?> entityPatchCapability;
+
     private static Method playAnimationSynchronised;
 
     /** Animations already looked up, so a missing one is only searched for once. */
@@ -92,137 +94,38 @@ public final class EpicFightBridge {
             return;
         }
         try {
-            getEntityPatch = findEntityPatchMethod();
+            entityPatchCapability = findCapability();
             playAnimationSynchronised = findPlayAnimationMethod();
         } catch (Throwable t) {
-            // A compatibility lookup is never worth a crash. Whatever went wrong
-            // in Epic Fight's classes, the NPCs still fight with vanilla melee.
             PokeEFNPC.LOGGER.warn("PokeEFNPC: Epic Fight lookup threw ({}); "
                     + "staying on vanilla combat.", t.toString());
-            getEntityPatch = null;
+            entityPatchCapability = null;
             playAnimationSynchronised = null;
         }
 
-        if (getEntityPatch == null) {
-            // Naming the classes that were tried makes this diagnosable from a
-            // log alone, rather than needing the mod rebuilt to find out.
-            PokeEFNPC.LOGGER.warn("PokeEFNPC: Epic Fight is present but no patch lookup resolved "
-                            + "(tried {}). NPCs fall back to vanilla combat, which is fully "
-                            + "playable - only Epic Fight's animated melee is lost.",
+        if (entityPatchCapability == null) {
+            PokeEFNPC.LOGGER.warn("PokeEFNPC: Epic Fight is present but its entity-patch "
+                            + "capability did not resolve (tried {}). NPCs fall back to vanilla "
+                            + "combat, which is fully playable.",
                     String.join(", ", CAPABILITY_CLASSES));
         } else {
-            PokeEFNPC.LOGGER.info("PokeEFNPC: Epic Fight patch lookup resolved ({}#{}, {}).",
-                    getEntityPatch.getDeclaringClass().getSimpleName(), getEntityPatch.getName(),
-                    patchBaseClass == null ? "single-argument form"
-                            : "generic form via " + patchBaseClass.getSimpleName());
+            PokeEFNPC.LOGGER.info("PokeEFNPC: Epic Fight entity-patch capability resolved.");
         }
     }
 
-    /**
-     * Finds Epic Fight's patch lookup.
-     *
-     * <p>The signature that actually ships is generic and takes <b>two</b>
-     * arguments — {@code getEntityPatch(E entity, Class<C> toType)} — which is
-     * the shape this has to match. Older builds exposed a one-argument form, so
-     * both are accepted and {@link #patchBaseClass} records which is in play:
-     * non-null means the two-argument form and the class to pass for it.
-     */
-    /**
-     * Finds Epic Fight's patch lookup.
-     *
-     * <p>Deliberately asks for <b>named signatures</b> rather than walking
-     * {@code getMethods()}. Enumerating a class forces the JVM to resolve every
-     * parameter and return type on it, and Epic Fight's capability class
-     * references client-only types such as {@code LocalPlayer}; on a dedicated
-     * server Forge's dist cleaner refuses to load those and throws. Walking the
-     * method list therefore crashed the moment an NPC was created on a server —
-     * asking for the exact signatures touches nothing else.
-     *
-     * <p>The generic two-argument form is what current Epic Fight ships; the
-     * one-argument form is kept for older builds. {@link #patchBaseClass}
-     * records which is in play: non-null means the two-argument form.
-     */
-    private static Method findEntityPatchMethod() {
-        Class<?> base = resolvePatchBaseClass();
-
+    private static Capability<?> findCapability() {
         for (String className : CAPABILITY_CLASSES) {
-            Class<?> caps;
             try {
-                caps = Class.forName(className);
-            } catch (Throwable ignored) {
-                continue;
-            }
-            // Every lookup below is individually guarded: one bad signature on
-            // one Epic Fight version must not cost the others.
-            if (base != null) {
-                for (String name : new String[]{"getEntityPatch", "getUnparameterizedEntityPatch"}) {
-                    for (Class<?> first : new Class<?>[]{Entity.class, LivingEntity.class}) {
-                        Method found = lookup(caps, name, first, Class.class);
-                        if (found != null) {
-                            patchBaseClass = base;
-                            return found;
-                        }
-                    }
+                Class<?> caps = Class.forName(className);
+                // getDeclaredField resolves this field's type and nothing else.
+                java.lang.reflect.Field field = caps.getDeclaredField("CAPABILITY_ENTITY");
+                field.setAccessible(true);
+                Object value = field.get(null);
+                if (value instanceof Capability<?> capability) {
+                    return capability;
                 }
-            }
-            for (Class<?> first : new Class<?>[]{Entity.class, LivingEntity.class}) {
-                Method found = lookup(caps, "getEntityPatch", first);
-                if (found != null) {
-                    patchBaseClass = null;
-                    return found;
-                }
-            }
-        }
-        return null;
-    }
-
-    private static Method lookup(Class<?> owner, String name, Class<?>... parameters) {
-        try {
-            Method method = owner.getMethod(name, parameters);
-            return java.lang.reflect.Modifier.isStatic(method.getModifiers()) ? method : null;
-        } catch (Throwable ignored) {
-            return null;
-        }
-    }
-
-    private static Class<?> resolvePatchBaseClass() {
-        for (String className : PATCH_BASE_CLASSES) {
-            try {
-                return Class.forName(className);
             } catch (Throwable ignored) {
                 // Try the next candidate.
-            }
-        }
-        return null;
-    }
-
-    /** Calls Epic Fight's lookup with whichever signature resolved. */
-    private static Object invokePatchLookup(NpcEntity npc) throws Exception {
-        if (patchBaseClass != null) {
-            return getEntityPatch.invoke(null, npc, patchBaseClass);
-        }
-        return getEntityPatch.invoke(null, npc);
-    }
-
-    private static Method findPlayAnimationMethod() {
-        for (String className : ANIMATION_CLASSES) {
-            try {
-                Class.forName(className);
-            } catch (Throwable ignored) {
-                continue;
-            }
-            try {
-                Class<?> patchClass = Class.forName(
-                        "yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch");
-                for (Method method : patchClass.getMethods()) {
-                    String name = method.getName();
-                    if ((name.equals("playAnimationSynchronized") || name.equals("playAnimation"))
-                            && method.getParameterCount() >= 2) {
-                        return method;
-                    }
-                }
-            } catch (Throwable ignored) {
-                // Fall through; animation playback simply stays unavailable.
             }
         }
         return null;
@@ -239,28 +142,27 @@ public final class EpicFightBridge {
      */
     public static boolean registerPatch(NpcEntity npc) {
         resolve();
-        if (!present || getEntityPatch == null || npc == null) {
-            return false;
-        }
-        try {
-            return invokePatchLookup(npc) != null;
-        } catch (Throwable t) {
-            // One failure means this install's Epic Fight is not shaped the way
-            // the lookup expected. Stop asking rather than throwing every spawn.
-            PokeEFNPC.LOGGER.warn("PokeEFNPC: Epic Fight patch lookup failed ({}); "
-                    + "disabling the Epic Fight path.", t.toString());
-            getEntityPatch = null;
-            return false;
-        }
+        return patchOf(npc) != null;
     }
 
-    /** The NPC's Epic Fight patch, or null when there is not one. */
+    /**
+     * The NPC's Epic Fight patch, or null when Epic Fight did not make one for
+     * this entity type.
+     *
+     * <p>Epic Fight only attaches a patch to entity types it has been told
+     * about. For a mod's own mob that means a datapack entry under
+     * {@code data/<namespace>/epicfight_mobpatch/<entity>.json} — see the file
+     * this mod ships for {@code pokeefnpc:npc}. Without one this returns null
+     * and the NPCs simply use vanilla melee.
+     */
     private static Object patchOf(NpcEntity npc) {
-        if (!present || getEntityPatch == null) {
+        resolve();
+        Capability<?> capability = entityPatchCapability;
+        if (!present || capability == null || npc == null) {
             return null;
         }
         try {
-            return invokePatchLookup(npc);
+            return npc.getCapability(capability).resolve().orElse(null);
         } catch (Throwable t) {
             return null;
         }
