@@ -21,6 +21,7 @@ public final class PokeEFNPCConfig {
     private static final ForgeConfigSpec.IntValue POPULATION_INTERVAL_TICKS;
     private static final ForgeConfigSpec.DoubleValue OUTLAW_SPAWN_CHANCE;
     private static final ForgeConfigSpec.BooleanValue REPLACE_VANILLA_VILLAGERS;
+    private static final ForgeConfigSpec.BooleanValue EPIC_FIGHT_PATCH;
 
     private static final ForgeConfigSpec.BooleanValue VOICE_ENABLED;
     private static final ForgeConfigSpec.DoubleValue VOICE_LISTEN_RANGE;
@@ -286,6 +287,13 @@ public final class PokeEFNPCConfig {
                         "name and it wears that account's skin.")
                 .define("fromCustomName", true);
 
+        EPIC_FIGHT_PATCH = builder
+                .comment("Give NPCs Epic Fight's combat, animations and renderer.",
+                        "Installed by the mod itself - no datapack. Ignored entirely",
+                        "when Epic Fight is not present. Turn off to keep vanilla",
+                        "combat and the mod's own face rendering.")
+                .define("epicFightPatch", true);
+
         builder.pop();
         SPEC = builder.build();
     }
@@ -319,6 +327,10 @@ public final class PokeEFNPCConfig {
 
     public static boolean replaceVanillaVillagers() {
         return REPLACE_VANILLA_VILLAGERS.get();
+    }
+
+    public static boolean epicFightPatch() {
+        return EPIC_FIGHT_PATCH.get();
     }
 
     // ------------------------------------------------------------------ voice

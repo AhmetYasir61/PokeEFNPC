@@ -396,4 +396,18 @@ public class ServerEvents {
         return profile.isPresent() && server.getPlayerList().getBans().isBanned(profile.get());
     }
 
+
+    /**
+     * Installs the Epic Fight patch as soon as the server has resources.
+     *
+     * <p>Deliberately not at mod-construction time: the patch needs a resource
+     * manager to load its mesh through, and that does not exist until the server
+     * is up.
+     */
+    @SubscribeEvent
+    public void onServerStarted(net.minecraftforge.event.server.ServerStartedEvent event) {
+        com.pokewing.pokeefnpc.compat.EpicFightPatchInstaller.installServer(
+                event.getServer().getResourceManager());
+    }
+
 }

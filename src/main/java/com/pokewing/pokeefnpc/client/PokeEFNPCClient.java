@@ -58,4 +58,26 @@ public final class PokeEFNPCClient {
                 () -> LayerDefinition.create(
                         PlayerModel.createMesh(CubeDeformation.NONE, false), 64, 64));
     }
+
+    /**
+     * Installs the Epic Fight patch on the client, when joining a world.
+     *
+     * <p>Later than the server's install and for a different reason: the
+     * renderer swap needs Minecraft's renderers and resources to exist, and at
+     * client setup they do not. Joining is the first moment both are true.
+     *
+     * <p>Its own class because joining is a Forge-bus event while everything
+     * else in here is mod-bus, and a handler on the wrong bus is never called
+     * at all — silently.
+     */
+    @Mod.EventBusSubscriber(modid = PokeEFNPC.MOD_ID, value = Dist.CLIENT)
+    public static final class Join {
+        @SubscribeEvent
+        public static void onJoin(
+                net.minecraftforge.client.event.ClientPlayerNetworkEvent.LoggingIn event) {
+            com.pokewing.pokeefnpc.compat.EpicFightPatchInstaller.installClient(
+                    net.minecraft.client.Minecraft.getInstance().getResourceManager());
+        }
+    }
+
 }

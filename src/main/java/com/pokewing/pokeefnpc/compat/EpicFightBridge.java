@@ -57,6 +57,13 @@ public final class EpicFightBridge {
     private static boolean resolved;
     private static boolean present;
 
+    /** Whether Epic Fight is installed at all. */
+    public static boolean isPresent() {
+        resolve();
+        return present;
+    }
+
+
     /**
      * Epic Fight's entity-patch capability.
      *
