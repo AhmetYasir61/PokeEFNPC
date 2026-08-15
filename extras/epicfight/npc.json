@@ -12,5 +12,125 @@
     "chasing_speed": 1.0,
     "stun_armor": 0.0,
     "scale": 1.0
-  }
+  },
+  "default_livingmotions": {
+    "IDLE": "epicfight:biped/living/idle",
+    "WALK": "epicfight:biped/living/walk",
+    "RUN": "epicfight:biped/living/run",
+    "SNEAK": "epicfight:biped/living/sneak",
+    "SWIM": "epicfight:biped/living/swim",
+    "FLOAT": "epicfight:biped/living/float",
+    "FALL": "epicfight:biped/living/fall",
+    "JUMP": "epicfight:biped/living/jump",
+    "KNEEL": "epicfight:biped/living/kneel",
+    "SIT": "epicfight:biped/living/sit",
+    "SLEEP": "epicfight:biped/living/sleep",
+    "CLIMB": "epicfight:biped/living/climb",
+    "MOUNT": "epicfight:biped/living/mount",
+    "DEATH": "epicfight:biped/living/death",
+    "DIGGING": "epicfight:biped/living/dig",
+    "DRINK": "epicfight:biped/living/drink",
+    "EAT": "epicfight:biped/living/eat",
+    "BLOCK": "epicfight:biped/living/shield"
+  },
+  "stun_animations": {
+    "SHORT": "epicfight:biped/combat/hit_short",
+    "LONG": "epicfight:biped/combat/hit_long",
+    "KNOCKDOWN": "epicfight:biped/combat/knockdown",
+    "FALL": "epicfight:biped/living/landing"
+  },
+  "humanoid_weapon_motions": [
+    {
+      "weapon_categories": ["SWORD"],
+      "style": "ONE_HAND",
+      "livingmotions": {
+        "IDLE": "epicfight:biped/living/idle",
+        "WALK": "epicfight:biped/living/walk",
+        "RUN": "epicfight:biped/living/run"
+      }
+    },
+    {
+      "weapon_categories": ["LONGSWORD"],
+      "style": "TWO_HAND",
+      "livingmotions": {
+        "IDLE": "epicfight:biped/living/hold_longsword",
+        "WALK": "epicfight:biped/living/walk_longsword",
+        "RUN": "epicfight:biped/living/run_longsword"
+      }
+    },
+    {
+      "weapon_categories": ["GREATSWORD"],
+      "style": "TWO_HAND",
+      "livingmotions": {
+        "IDLE": "epicfight:biped/living/hold_greatsword",
+        "WALK": "epicfight:biped/living/walk_greatsword",
+        "RUN": "epicfight:biped/living/run_greatsword"
+      }
+    },
+    {
+      "weapon_categories": ["SPEAR"],
+      "style": "TWO_HAND",
+      "livingmotions": {
+        "IDLE": "epicfight:biped/living/hold_spear",
+        "WALK": "epicfight:biped/living/walk_spear",
+        "RUN": "epicfight:biped/living/run_spear"
+      }
+    }
+  ],
+  "combat_behavior": [
+    {
+      "weight": 40.0,
+      "cooldown": 0,
+      "canBeInterrupted": true,
+      "looping": false,
+      "behaviors": [
+        {
+          "animation": "epicfight:biped/combat/sword_auto1",
+          "conditions": [
+            { "predicate": "within_distance", "min": 0.0, "max": 3.0 }
+          ]
+        },
+        {
+          "animation": "epicfight:biped/combat/sword_auto2",
+          "conditions": [
+            { "predicate": "within_distance", "min": 0.0, "max": 3.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "weight": 20.0,
+      "cooldown": 40,
+      "canBeInterrupted": true,
+      "looping": false,
+      "behaviors": [
+        {
+          "animation": "epicfight:biped/combat/sword_dash",
+          "conditions": [
+            { "predicate": "within_distance", "min": 3.0, "max": 6.0 }
+          ]
+        }
+      ]
+    },
+    {
+      "weight": 30.0,
+      "cooldown": 0,
+      "canBeInterrupted": true,
+      "looping": false,
+      "behaviors": [
+        {
+          "animation": "epicfight:biped/combat/fist_auto1",
+          "conditions": [
+            { "predicate": "within_distance", "min": 0.0, "max": 2.5 }
+          ]
+        },
+        {
+          "animation": "epicfight:biped/combat/fist_auto2",
+          "conditions": [
+            { "predicate": "within_distance", "min": 0.0, "max": 2.5 }
+          ]
+        }
+      ]
+    }
+  ]
 }

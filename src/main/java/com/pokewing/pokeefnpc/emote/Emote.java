@@ -28,47 +28,47 @@ import com.pokewing.pokeefnpc.npc.Emotion;
 public enum Emote {
 
     // ---------------------------------------------------------------- social
-    WAVE("wave", Pose.WAVE, false, 30, Emotion.HAPPY, "biped/living/wave"),
-    BOW("bow", Pose.BOW, false, 40, Emotion.NEUTRAL, "biped/living/bow"),
-    SALUTE("salute", Pose.SALUTE, false, 30, Emotion.FOCUSED, "biped/living/salute"),
+    WAVE("wave", Pose.WAVE, false, 30, Emotion.HAPPY, "efdancing:biped/pugilist_steve/nl_wave_emote"),
+    BOW("bow", Pose.BOW, false, 40, Emotion.NEUTRAL, "efdancing:biped/pugilist_steve/nl_bow_emote"),
+    SALUTE("salute", Pose.SALUTE, false, 30, Emotion.FOCUSED, "efdancing:biped/pugilist_steve/salute_emote"),
     NOD("nod", Pose.NOD, false, 20, Emotion.NEUTRAL, null),
     SHAKE_HEAD("shake_head", Pose.SHAKE_HEAD, false, 24, Emotion.SAD, null),
-    CLAP("clap", Pose.CLAP, true, 40, Emotion.HAPPY, "biped/living/clap"),
-    CHEER("cheer", Pose.CHEER, true, 40, Emotion.HAPPY, "biped/living/cheer"),
-    LAUGH("laugh", Pose.LAUGH, false, 40, Emotion.HAPPY, null),
-    POINT("point", Pose.POINT, false, 30, Emotion.FOCUSED, "biped/living/point"),
+    CLAP("clap", Pose.CLAP, true, 40, Emotion.HAPPY, "efdancing:biped/pugilist_steve/piglin_celebrate_emote"),
+    CHEER("cheer", Pose.CHEER, true, 40, Emotion.HAPPY, "efdancing:biped/pugilist_steve/fun_jump_emote"),
+    LAUGH("laugh", Pose.LAUGH, false, 40, Emotion.HAPPY, "efdancing:biped/pugilist_steve/nl_lol_emote"),
+    POINT("point", Pose.POINT, false, 30, Emotion.FOCUSED, "efdancing:biped/pugilist_steve/attention_emote"),
     BECKON("beckon", Pose.BECKON, false, 30, Emotion.HAPPY, null),
     SHRUG("shrug", Pose.SHRUG, false, 30, Emotion.NEUTRAL, null),
     FACEPALM("facepalm", Pose.FACEPALM, false, 45, Emotion.SAD, null),
     THINK("think", Pose.THINK, true, 60, Emotion.FOCUSED, null),
     CROSS_ARMS("cross_arms", Pose.CROSS_ARMS, true, 80, Emotion.NEUTRAL, null),
-    JEER("jeer", Pose.JEER, false, 35, Emotion.ANGRY, null),
-    WEEP("weep", Pose.WEEP, true, 60, Emotion.SAD, null),
-    BEG("beg", Pose.BEG, true, 60, Emotion.SAD, null),
+    JEER("jeer", Pose.JEER, false, 35, Emotion.ANGRY, "efdancing:biped/pugilist_steve/funny_emote"),
+    WEEP("weep", Pose.WEEP, true, 60, Emotion.SAD, "efdancing:biped/m3tte_emote/sorrow_emote"),
+    BEG("beg", Pose.BEG, true, 60, Emotion.SAD, "efdancing:biped/m3tte_emote/surrender_emote"),
     SHIVER("shiver", Pose.SHIVER, true, 40, Emotion.TIRED, null),
-    STRETCH("stretch", Pose.STRETCH, false, 45, Emotion.TIRED, null),
+    STRETCH("stretch", Pose.STRETCH, false, 45, Emotion.TIRED, "efdancing:biped/pugilist_steve/push_up_emote"),
 
     // ------------------------------------------------------------ occupation
-    HAMMER("hammer", Pose.HAMMER, true, 30, Emotion.FOCUSED, "biped/living/smith"),
+    HAMMER("hammer", Pose.HAMMER, true, 30, Emotion.FOCUSED, null),
     SWEEP("sweep", Pose.SWEEP, true, 50, Emotion.NEUTRAL, null),
     SOW("sow", Pose.SOW, true, 45, Emotion.NEUTRAL, null),
     HARVEST("harvest", Pose.HARVEST, true, 40, Emotion.FOCUSED, null),
-    MINE_SWING("mine_swing", Pose.HAMMER, true, 28, Emotion.FOCUSED, "biped/living/mine"),
+    MINE_SWING("mine_swing", Pose.HAMMER, true, 28, Emotion.FOCUSED, null),
     STIR("stir", Pose.STIR, true, 50, Emotion.FOCUSED, null),
     WRITE("write", Pose.WRITE, true, 60, Emotion.FOCUSED, null),
     WEIGH_COIN("weigh_coin", Pose.WEIGH_COIN, true, 45, Emotion.FOCUSED, null),
     HAGGLE("haggle", Pose.HAGGLE, false, 35, Emotion.FOCUSED, null),
     LUTE("lute", Pose.LUTE, true, 60, Emotion.HAPPY, null),
-    PRAY("pray", Pose.PRAY, true, 80, Emotion.NEUTRAL, null),
-    CAST("cast", Pose.CAST, false, 40, Emotion.FOCUSED, "biped/living/cast"),
-    DRINK("drink", Pose.DRINK, false, 40, Emotion.HAPPY, "biped/living/drink"),
+    PRAY("pray", Pose.PRAY, true, 80, Emotion.NEUTRAL, "epicfight:biped/living/kneel"),
+    CAST("cast", Pose.CAST, false, 40, Emotion.FOCUSED, null),
+    DRINK("drink", Pose.DRINK, false, 40, Emotion.HAPPY, "epicfight:biped/living/drink"),
     SHARPEN("sharpen", Pose.SHARPEN, true, 40, Emotion.FOCUSED, null),
     HAUL("haul", Pose.HAUL, true, 60, Emotion.TIRED, null),
 
     // ------------------------------------------------------------- martial
-    GUARD_STANCE("guard_stance", Pose.GUARD_STANCE, true, 80, Emotion.FOCUSED, "biped/living/guard"),
-    TAUNT("taunt", Pose.TAUNT, false, 35, Emotion.ANGRY, "biped/living/taunt"),
-    ROAR("roar", Pose.ROAR, false, 40, Emotion.ANGRY, "biped/living/roar"),
+    GUARD_STANCE("guard_stance", Pose.GUARD_STANCE, true, 80, Emotion.FOCUSED, "efdancing:biped/pugilist_steve/attention_emote"),
+    TAUNT("taunt", Pose.TAUNT, false, 35, Emotion.ANGRY, "efdancing:biped/pugilist_steve/nl_goad_emote"),
+    ROAR("roar", Pose.ROAR, false, 40, Emotion.ANGRY, null),
     SCAN_HORIZON("scan_horizon", Pose.SCAN_HORIZON, true, 70, Emotion.FOCUSED, null),
     DRAW_WEAPON("draw_weapon", Pose.DRAW_WEAPON, false, 25, Emotion.FOCUSED, null),
 
@@ -133,9 +133,18 @@ public enum Emote {
     }
 
     /**
-     * Path of the Epic Fight animation to try, without the namespace, or null
-     * when this emote has no Epic Fight counterpart and should always run
-     * procedurally.
+     * Full key of the animation to try, namespace included, or null when nothing
+     * shipped draws this gesture and it should always run procedurally.
+     *
+     * <p>Most of these live in the Epic Fight Dancing addon ({@code efdancing}),
+     * because base Epic Fight ships combat and locomotion but almost no social
+     * gestures — there is no wave, no bow, no laugh in it. A handful that Epic
+     * Fight genuinely does have, like kneeling and drinking, are taken from
+     * {@code epicfight} directly.
+     *
+     * <p>The namespace is part of the key on purpose: Epic Fight resolves these
+     * as resource locations, so a bare path would be read as {@code minecraft:}
+     * and never match anything.
      */
     public String epicFightAnimation() {
         return this.epicFightAnimation;
