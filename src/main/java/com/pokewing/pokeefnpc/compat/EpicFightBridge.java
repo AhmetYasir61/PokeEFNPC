@@ -49,10 +49,22 @@ public final class EpicFightBridge {
             "yesman.epicfight.api.animation.AnimationManager",
     };
 
+    /** Class names Epic Fight has used for the base patch type. */
+    private static final String[] PATCH_BASE_CLASSES = {
+            "yesman.epicfight.world.capabilities.entitypatch.EntityPatch",
+            "yesman.epicfight.capabilities.entity.CapabilityEntity",
+    };
+
     private static boolean resolved;
     private static boolean present;
 
     private static Method getEntityPatch;
+    /**
+     * Epic Fight's lookup is generic — {@code getEntityPatch(E entity, Class<C> toType)}
+     * — so the second argument has to be supplied. This is the base patch class
+     * to ask for, resolved once alongside the method.
+     */
+    private static Class<?> patchBaseClass;
     private static Method playAnimationSynchronised;
 
     /** Animations already looked up, so a missing one is only searched for once. */
@@ -82,31 +94,87 @@ public final class EpicFightBridge {
         playAnimationSynchronised = findPlayAnimationMethod();
 
         if (getEntityPatch == null) {
-            PokeEFNPC.LOGGER.warn("PokeEFNPC: Epic Fight is present but its capability entry point "
-                    + "did not resolve. NPCs fall back to vanilla combat.");
+            // Naming the classes that were tried makes this diagnosable from a
+            // log alone, rather than needing the mod rebuilt to find out.
+            PokeEFNPC.LOGGER.warn("PokeEFNPC: Epic Fight is present but no patch lookup resolved "
+                            + "(tried {}). NPCs fall back to vanilla combat, which is fully "
+                            + "playable - only Epic Fight's animated melee is lost.",
+                    String.join(", ", CAPABILITY_CLASSES));
         } else {
-            PokeEFNPC.LOGGER.info("PokeEFNPC: Epic Fight detected - NPC combat patches enabled.");
+            PokeEFNPC.LOGGER.info("PokeEFNPC: Epic Fight patch lookup resolved ({}#{}, {}).",
+                    getEntityPatch.getDeclaringClass().getSimpleName(), getEntityPatch.getName(),
+                    patchBaseClass == null ? "single-argument form"
+                            : "generic form via " + patchBaseClass.getSimpleName());
         }
     }
 
+    /**
+     * Finds Epic Fight's patch lookup.
+     *
+     * <p>The signature that actually ships is generic and takes <b>two</b>
+     * arguments — {@code getEntityPatch(E entity, Class<C> toType)} — which is
+     * the shape this has to match. Older builds exposed a one-argument form, so
+     * both are accepted and {@link #patchBaseClass} records which is in play:
+     * non-null means the two-argument form and the class to pass for it.
+     */
     private static Method findEntityPatchMethod() {
+        patchBaseClass = resolvePatchBaseClass();
+
+        Method oneArg = null;
         for (String className : CAPABILITY_CLASSES) {
+            Class<?> caps;
             try {
-                Class<?> caps = Class.forName(className);
-                for (Method method : caps.getMethods()) {
-                    // Signature drifts between versions; matching on shape rather
-                    // than an exact name is what survives the drift.
-                    if (method.getName().toLowerCase(java.util.Locale.ROOT).contains("entitypatch")
-                            && method.getParameterCount() == 1
-                            && method.getParameterTypes()[0].isAssignableFrom(LivingEntity.class)) {
-                        return method;
-                    }
+                caps = Class.forName(className);
+            } catch (Throwable ignored) {
+                continue;
+            }
+            for (Method method : caps.getMethods()) {
+                if (!java.lang.reflect.Modifier.isStatic(method.getModifiers())) {
+                    continue;
                 }
+                String name = method.getName().toLowerCase(java.util.Locale.ROOT);
+                if (!name.contains("entitypatch")) {
+                    continue;
+                }
+                Class<?>[] parameters = method.getParameterTypes();
+                if (parameters.length == 0 || !parameters[0].isAssignableFrom(LivingEntity.class)) {
+                    continue;
+                }
+                // The two-argument generic form is the one current Epic Fight
+                // ships, so it wins when both are present.
+                if (parameters.length == 2 && parameters[1] == Class.class
+                        && patchBaseClass != null) {
+                    return method;
+                }
+                if (parameters.length == 1 && oneArg == null) {
+                    oneArg = method;
+                }
+            }
+        }
+        if (oneArg != null) {
+            // Signals the single-argument call path below.
+            patchBaseClass = null;
+        }
+        return oneArg;
+    }
+
+    private static Class<?> resolvePatchBaseClass() {
+        for (String className : PATCH_BASE_CLASSES) {
+            try {
+                return Class.forName(className);
             } catch (Throwable ignored) {
                 // Try the next candidate.
             }
         }
         return null;
+    }
+
+    /** Calls Epic Fight's lookup with whichever signature resolved. */
+    private static Object invokePatchLookup(NpcEntity npc) throws Exception {
+        if (patchBaseClass != null) {
+            return getEntityPatch.invoke(null, npc, patchBaseClass);
+        }
+        return getEntityPatch.invoke(null, npc);
     }
 
     private static Method findPlayAnimationMethod() {
@@ -148,7 +216,7 @@ public final class EpicFightBridge {
             return false;
         }
         try {
-            return getEntityPatch.invoke(null, npc) != null;
+            return invokePatchLookup(npc) != null;
         } catch (Throwable t) {
             // One failure means this install's Epic Fight is not shaped the way
             // the lookup expected. Stop asking rather than throwing every spawn.
@@ -165,7 +233,7 @@ public final class EpicFightBridge {
             return null;
         }
         try {
-            return getEntityPatch.invoke(null, npc);
+            return invokePatchLookup(npc);
         } catch (Throwable t) {
             return null;
         }
