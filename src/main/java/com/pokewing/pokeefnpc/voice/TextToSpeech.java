@@ -97,10 +97,22 @@ public final class TextToSpeech {
         byte[] body;
         if (PokeEFNPCConfig.ttsJsonBody()) {
             JsonObject request = new JsonObject();
-            request.addProperty("model", PokeEFNPCConfig.ttsModel());
+            // The line is sent under BOTH names on purpose. Piper's /synthesize
+            // reads "text"; OpenAI-shaped endpoints read "input". Each ignores
+            // the other's key, so one body satisfies both and the config needs
+            // no extra switch to say which flavour of server is listening.
+            request.addProperty("text", text);
             request.addProperty("input", text);
-            request.addProperty("voice", PokeEFNPCConfig.ttsVoice());
+            request.addProperty("model", PokeEFNPCConfig.ttsModel());
             request.addProperty("response_format", "wav");
+            // Piper treats "voice" as a model id and falls back with a warning
+            // when it does not name a voice it has loaded — and with a single
+            // -m model there is nothing to choose. So an empty setting means
+            // "do not ask", rather than asking for a voice that cannot exist.
+            String voice = PokeEFNPCConfig.ttsVoice();
+            if (!voice.isBlank()) {
+                request.addProperty("voice", voice);
+            }
             body = request.toString().getBytes(StandardCharsets.UTF_8);
         } else {
             body = text.getBytes(StandardCharsets.UTF_8);

@@ -199,9 +199,12 @@ public final class PokeEFNPCConfig {
         TTS_MODEL = builder.define("model", "tts-1");
         TTS_VOICE = builder
                 .comment("Voice name, for servers that offer a choice.",
-                        "Each NPC is pitched around this from its role and its id,",
-                        "so one voice model still produces a village of distinct people.")
-                .define("voice", "alloy");
+                        "Leave EMPTY for Piper, which is already given its voice with",
+                        "its -m flag and treats this as a model id it cannot find.",
+                        "Each NPC is pitched around whatever voice is used, from its role",
+                        "and its id, so one voice model still produces a village of",
+                        "distinct people.")
+                .define("voice", "");
         TTS_GAIN = builder
                 .comment("Volume multiplier. Synthesised speech is usually quieter than a",
                         "player's microphone, so it generally wants lifting.")
