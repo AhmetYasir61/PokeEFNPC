@@ -816,7 +816,7 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
      * the pitch the speech synthesiser uses for the same NPC.
      */
     @Override
-    protected float getVoicePitch() {
+    public float getVoicePitch() {
         return com.pokewing.pokeefnpc.voice.TextToSpeech.pitchFor(role(), getUUID());
     }
 
