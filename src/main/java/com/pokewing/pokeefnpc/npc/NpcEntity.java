@@ -780,20 +780,46 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         return false;
     }
 
+    /**
+     * Silence.
+     *
+     * <p>These are people, not villagers, and the villager "hurr" was doing more
+     * damage to that impression than anything else in the mod: a square of them
+     * grunting at each other reads as livestock however good the rest of the
+     * simulation is. Real people are quiet when they have nothing to say — and
+     * when they do have something to say, it arrives as a line of dialogue or as
+     * actual synthesised speech, which is the channel that should carry it.
+     */
     @Override
     protected SoundEvent getAmbientSound() {
-        return this.mood.current() == Emotion.ANGRY ? SoundEvents.VILLAGER_NO : SoundEvents.VILLAGER_AMBIENT;
+        return null;
     }
 
     @Override
     protected SoundEvent getHurtSound(DamageSource source) {
-        return SoundEvents.VILLAGER_HURT;
+        return SoundEvents.PLAYER_HURT;
     }
 
     @Override
     protected SoundEvent getDeathSound() {
-        return SoundEvents.VILLAGER_DEATH;
+        return SoundEvents.PLAYER_DEATH;
     }
+
+    @Override
+    protected float getSoundVolume() {
+        return 0.7F;
+    }
+
+    /**
+     * Voice pitch, so a crowd is not one person. Stable per character because it
+     * comes from the id rather than from the random source, and it lines up with
+     * the pitch the speech synthesiser uses for the same NPC.
+     */
+    @Override
+    protected float getVoicePitch() {
+        return com.pokewing.pokeefnpc.voice.TextToSpeech.pitchFor(role(), getUUID());
+    }
+
 
     @Override
     protected float getStandingEyeHeight(net.minecraft.world.entity.Pose pose,
