@@ -11,6 +11,9 @@ base {
 }
 
 java {
+    // Forge 1.20.1 targets Java 17. Gradle itself may be running on a newer JDK;
+    // the foojay resolver in settings.gradle provisions a 17 for this toolchain,
+    // so the compiled classes are 17 regardless of what launched the build.
     toolchain.languageVersion = JavaLanguageVersion.of(17)
 }
 
