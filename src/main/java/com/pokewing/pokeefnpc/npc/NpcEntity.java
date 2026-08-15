@@ -785,8 +785,77 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
 
     // ------------------------------------------------------------- combat
 
+
+    // -------------------------------------------------------- friendly fire
+
+    /**
+     * Whether this NPC counts the other as one of its own.
+     *
+     * <p>Two townsfolk are allies; so are two soldiers sworn to the same person.
+     * An outlaw is nobody's ally, and neither is somebody else's soldier — those
+     * are the two cases where NPCs are genuinely supposed to fight each other.
+     */
+    public boolean alliedWith(NpcEntity other) {
+        if (other == this) {
+            return true;
+        }
+        if (this.role.isOutlaw() != other.role.isOutlaw()) {
+            return false;
+        }
+        var mine = this.allegiance.owner();
+        var theirs = other.allegiance.owner();
+        if (mine != null && theirs != null) {
+            return mine.equals(theirs);
+        }
+        // One sworn, one not: still neighbours unless one of them is an outlaw,
+        // which the check above already settled.
+        return true;
+    }
+
+    @Override
+    public boolean isAlliedTo(net.minecraft.world.entity.Entity entity) {
+        if (entity instanceof NpcEntity other) {
+            return alliedWith(other);
+        }
+        // A soldier is allied to the person it serves, so nothing in vanilla's
+        // retaliation machinery ever points it at its own owner.
+        if (entity instanceof Player player && this.allegiance.isOwnedBy(player.getUUID())) {
+            return true;
+        }
+        return super.isAlliedTo(entity);
+    }
+
+    @Override
+    public boolean canAttack(LivingEntity target) {
+        if (target instanceof NpcEntity other && alliedWith(other)) {
+            return false;
+        }
+        if (target instanceof Player player && this.allegiance.isOwnedBy(player.getUUID())) {
+            return false;
+        }
+        return super.canAttack(target);
+    }
+
+    @Override
+    public void setTarget(@Nullable LivingEntity target) {
+        // The last gate. Goals are many and some of them are vanilla's; rather
+        // than trusting every one of them to have checked, nothing that is not a
+        // valid enemy is ever allowed to become the target in the first place.
+        if (target != null && !canAttack(target)) {
+            return;
+        }
+        super.setTarget(target);
+    }
+
     @Override
     public boolean hurt(DamageSource source, float amount) {
+        // A stray blow from one of your own does not land at all. Softening it
+        // would not be enough: any damage at all sets off the retaliation the
+        // whole allied check exists to prevent, and one clipped neighbour
+        // during a monster fight becomes two townsfolk duelling to the death.
+        if (source.getEntity() instanceof NpcEntity attacker && alliedWith(attacker)) {
+            return false;
+        }
         boolean hurt = super.hurt(source, amount);
         if (hurt && !level().isClientSide) {
             this.mood.latch(this.personality, Emotion.HURT);

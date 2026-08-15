@@ -4,6 +4,7 @@
   "faction": "neutral",
   "model": "epicfight:entity/biped",
   "armature": "epicfight:entity/biped",
+  "renderer": "humanoid",
   "attributes": {
     "impact": 0.5,
     "armor_negation": 0.0,
@@ -41,7 +42,9 @@
   },
   "humanoid_weapon_motions": [
     {
-      "weapon_categories": ["SWORD"],
+      "weapon_categories": [
+        "SWORD"
+      ],
       "style": "ONE_HAND",
       "livingmotions": {
         "IDLE": "epicfight:biped/living/idle",
@@ -50,7 +53,9 @@
       }
     },
     {
-      "weapon_categories": ["LONGSWORD"],
+      "weapon_categories": [
+        "LONGSWORD"
+      ],
       "style": "TWO_HAND",
       "livingmotions": {
         "IDLE": "epicfight:biped/living/hold_longsword",
@@ -59,7 +64,9 @@
       }
     },
     {
-      "weapon_categories": ["GREATSWORD"],
+      "weapon_categories": [
+        "GREATSWORD"
+      ],
       "style": "TWO_HAND",
       "livingmotions": {
         "IDLE": "epicfight:biped/living/hold_greatsword",
@@ -68,7 +75,9 @@
       }
     },
     {
-      "weapon_categories": ["SPEAR"],
+      "weapon_categories": [
+        "SPEAR"
+      ],
       "style": "TWO_HAND",
       "livingmotions": {
         "IDLE": "epicfight:biped/living/hold_spear",
@@ -87,13 +96,21 @@
         {
           "animation": "epicfight:biped/combat/sword_auto1",
           "conditions": [
-            { "predicate": "within_distance", "min": 0.0, "max": 3.0 }
+            {
+              "predicate": "within_distance",
+              "min": 0.0,
+              "max": 3.0
+            }
           ]
         },
         {
           "animation": "epicfight:biped/combat/sword_auto2",
           "conditions": [
-            { "predicate": "within_distance", "min": 0.0, "max": 3.0 }
+            {
+              "predicate": "within_distance",
+              "min": 0.0,
+              "max": 3.0
+            }
           ]
         }
       ]
@@ -107,7 +124,11 @@
         {
           "animation": "epicfight:biped/combat/sword_dash",
           "conditions": [
-            { "predicate": "within_distance", "min": 3.0, "max": 6.0 }
+            {
+              "predicate": "within_distance",
+              "min": 3.0,
+              "max": 6.0
+            }
           ]
         }
       ]
@@ -121,13 +142,21 @@
         {
           "animation": "epicfight:biped/combat/fist_auto1",
           "conditions": [
-            { "predicate": "within_distance", "min": 0.0, "max": 2.5 }
+            {
+              "predicate": "within_distance",
+              "min": 0.0,
+              "max": 2.5
+            }
           ]
         },
         {
           "animation": "epicfight:biped/combat/fist_auto2",
           "conditions": [
-            { "predicate": "within_distance", "min": 0.0, "max": 2.5 }
+            {
+              "predicate": "within_distance",
+              "min": 0.0,
+              "max": 2.5
+            }
           ]
         }
       ]
