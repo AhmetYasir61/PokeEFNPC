@@ -9,6 +9,9 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.fml.ModList;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -68,7 +71,17 @@ public final class EpicFightBridge {
      */
     private static Capability<?> entityPatchCapability;
 
-    private static Method playAnimationSynchronised;
+    /**
+     * Epic Fight's {@code playAnimationSynchronized(AssetAccessor, float)}.
+     *
+     * <p>A {@link MethodHandle} rather than a {@link Method} for the same reason
+     * the capability is reached by field: {@code LivingEntityPatch} declares
+     * {@code flashTargetIndicator(LocalPlayerPatch)}, so anything that
+     * enumerates its methods — {@code getMethod} included — drags a client-only
+     * class onto a dedicated server and throws. {@code findVirtual} resolves the
+     * one method symbolically and touches nothing else.
+     */
+    private static MethodHandle playAnimationHandle;
 
     /** Animations already looked up, so a missing one is only searched for once. */
     private static final Map<String, Object> ANIMATION_CACHE = new HashMap<>();
@@ -95,12 +108,12 @@ public final class EpicFightBridge {
         }
         try {
             entityPatchCapability = findCapability();
-            playAnimationSynchronised = findPlayAnimationMethod();
+            playAnimationHandle = findPlayAnimationHandle();
         } catch (Throwable t) {
             PokeEFNPC.LOGGER.warn("PokeEFNPC: Epic Fight lookup threw ({}); "
                     + "staying on vanilla combat.", t.toString());
             entityPatchCapability = null;
-            playAnimationSynchronised = null;
+            playAnimationHandle = null;
         }
 
         if (entityPatchCapability == null) {
@@ -129,6 +142,27 @@ public final class EpicFightBridge {
             }
         }
         return null;
+    }
+
+    private static MethodHandle findPlayAnimationHandle() {
+        for (String className : ANIMATION_CLASSES) {
+            try {
+                Class.forName(className);
+            } catch (Throwable ignored) {
+                continue;
+            }
+        }
+        try {
+            Class<?> patchClass = Class.forName(
+                    "yesman.epicfight.world.capabilities.entitypatch.LivingEntityPatch");
+            Class<?> assetAccessor = Class.forName("yesman.epicfight.api.asset.AssetAccessor");
+            return MethodHandles.publicLookup().findVirtual(patchClass, "playAnimationSynchronized",
+                    MethodType.methodType(void.class, assetAccessor, float.class));
+        } catch (Throwable t) {
+            // Animation playback simply stays unavailable; the client's own
+            // procedural animator draws the same gesture regardless.
+            return null;
+        }
     }
 
     /**
@@ -181,7 +215,7 @@ public final class EpicFightBridge {
         if (!present || emote == null || emote.epicFightAnimation() == null) {
             return;
         }
-        if (playAnimationSynchronised == null) {
+        if (playAnimationHandle == null) {
             return;
         }
         Object patch = patchOf(npc);
@@ -195,12 +229,33 @@ public final class EpicFightBridge {
         try {
             // Signature is (animation, transitionTime) in every version this was
             // written against; anything else is treated as unavailable.
-            if (playAnimationSynchronised.getParameterCount() == 2) {
-                playAnimationSynchronised.invoke(patch, animation, 0.15F);
-            }
+            playAnimationHandle.invoke(patch, animation, 0.15F);
         } catch (Throwable ignored) {
             // Presentation only — never worth interrupting the tick for.
         }
+    }
+
+    /**
+     * Epic Fight's {@code AnimationManager.byKey(String)}, resolved the same way
+     * and for the same reason as the playback handle.
+     */
+    private static MethodHandle animationByKeyHandle;
+    private static boolean animationByKeyResolved;
+
+    private static synchronized MethodHandle animationByKey() {
+        if (!animationByKeyResolved) {
+            animationByKeyResolved = true;
+            try {
+                Class<?> manager = Class.forName("yesman.epicfight.api.animation.AnimationManager");
+                Class<?> accessor = Class.forName(
+                        "yesman.epicfight.api.animation.AnimationManager$AnimationAccessor");
+                animationByKeyHandle = MethodHandles.publicLookup().findStatic(manager, "byKey",
+                        MethodType.methodType(accessor, String.class));
+            } catch (Throwable t) {
+                animationByKeyHandle = null;
+            }
+        }
+        return animationByKeyHandle;
     }
 
     private static Object lookupAnimation(String path) {
@@ -208,40 +263,16 @@ public final class EpicFightBridge {
             return ANIMATION_CACHE.get(path);
         }
         Object found = null;
-        try {
-            Class<?> manager = Class.forName("yesman.epicfight.api.animation.AnimationManager");
-            for (Method method : manager.getMethods()) {
-                if (method.getName().equals("byKeyOrThrow") || method.getName().equals("byKey")) {
-                    if (method.getParameterCount() == 1
-                            && method.getParameterTypes()[0] == String.class) {
-                        found = method.invoke(null, path);
-                        break;
-                    }
-                }
+        MethodHandle byKey = animationByKey();
+        if (byKey != null) {
+            try {
+                found = byKey.invoke(path);
+            } catch (Throwable ignored) {
+                // A named animation this install does not ship. Cached as absent
+                // so the lookup is not repeated for every emote.
             }
-        } catch (Throwable ignored) {
-            // A named animation this install does not ship. Cached as absent so
-            // the lookup is not repeated for every emote.
         }
         ANIMATION_CACHE.put(path, found);
         return found;
-    }
-
-    /**
-     * True when the NPC is in an Epic Fight battle stance right now. Used by the
-     * face driver so a guard that has drawn its weapon looks like it means it.
-     */
-    public static boolean isInBattleMode(NpcEntity npc) {
-        Object patch = patchOf(npc);
-        if (patch == null) {
-            return false;
-        }
-        try {
-            Method mode = patch.getClass().getMethod("getEntityState");
-            Object state = mode.invoke(patch);
-            return state != null && !state.toString().equalsIgnoreCase("FREE");
-        } catch (Throwable t) {
-            return false;
-        }
     }
 }
