@@ -1,0 +1,76 @@
+# Builds the mod, and publishes the jar to Releases when a version tag is pushed.
+#
+# Two jobs on purpose. `build` runs on every push and pull request so a broken
+# commit is caught immediately, and it uploads the jar as a workflow artifact so
+# there is always something to download even without cutting a release. `release`
+# only runs for a `v*` tag and attaches that same jar to a real GitHub Release.
+name: build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+  # Lets you build a jar from the Actions tab without pushing anything.
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Forge 1.20.1 targets Java 17. Building on a newer JDK is what breaks
+      # ForgeGradle, so this is pinned rather than left to the runner default.
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Build
+        run: ./gradlew build --no-daemon --stacktrace
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: pokeefnpc-jar
+          # The reobfuscated jar is the one that runs in the game; the
+          # -sources and -dev jars beside it are not.
+          path: build/libs/*.jar
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pokeefnpc-jar
+          path: dist
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.jar
+          generate_release_notes: true
+          body: |
+            **Minecraft 1.20.1 · Forge 47.x · Java 17**
+
+            Drop the jar into `mods/`. Every integration is optional:
+
+            | Mod | Adds |
+            |---|---|
+            | none | The full population: routines, roles, menus, settlements, defence |
+            | Epic Fight | Combat patches and emote animations |
+            | PokeFace | The drawn face — brows down for anger, up for sadness |
+            | Simple Voice Chat | Talking to NPCs out loud, and being answered aloud |
+
+            Speech recognition, speech synthesis and the language model all run on
+            your own machine and are configured in `config/pokeefnpc-server.toml`.
+            They are off or idle until you point them at a local server, and the
+            mod falls back to written dialogue whenever they are not answering.
