@@ -246,5 +246,17 @@
   "pokeefnpc.editor.tooltip.mode": "Mod: %s",
   "pokeefnpc.editor.tooltip.role": "Rol: %s",
   "pokeefnpc.editor.tooltip.help": "Modu değiştirmek için havaya sağ tık - rolü değiştirmek için eğilip NPC'ye sağ tık",
-  "pokeefnpc.dialogue.no_answer": "Hmm. Buna diyecek bir şeyim yok."
+  "pokeefnpc.dialogue.no_answer": "Hmm. Buna diyecek bir şeyim yok.",
+  "item.pokeefnpc.soldier_npc_spawn_egg": "Asker NPC Yumurtası",
+  "pokeefnpc.tooltip.soldier_egg": "Sana bağlı bir asker yerleştirir, ya da sana güvenen bir NPC'ye görevi teklif eder.",
+  "pokeefnpc.tooltip.soldier_egg_orders": "Kendi askerine eğilip sağ tıkla, emrini değiştir.",
+  "pokeefnpc.stance.off_duty": "Nasıl istersen. Ben kendi işime dönüyorum.",
+  "pokeefnpc.stance.follow": "Yanındayım.",
+  "pokeefnpc.stance.hold": "Burayı tutarım.",
+  "pokeefnpc.stance.patrol": "Buranın çevresinde devriye gezerim.",
+  "pokeefnpc.dialogue.gear_worse": "Bende bundan iyisi var, yine de sağ ol.",
+  "pokeefnpc.dialogue.already_yours": "Zaten sana hizmet ediyorum.",
+  "pokeefnpc.dialogue.sworn_elsewhere": "Ben bir başkasına bağlıyım.",
+  "pokeefnpc.dialogue.enlist_refused": "Senin için silah kuşanacak kadar tanımıyorum seni.",
+  "pokeefnpc.dialogue.enlist_accepted": "O hâlde senin için savaşırım. Emret."
 }

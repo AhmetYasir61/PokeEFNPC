@@ -2,8 +2,11 @@ package com.pokewing.pokeefnpc.npc;
 
 import com.pokewing.pokeefnpc.PokeEFNPC;
 import com.pokewing.pokeefnpc.ai.NpcClaimSitesGoal;
+import com.pokewing.pokeefnpc.ai.NpcCollectGearGoal;
 import com.pokewing.pokeefnpc.ai.NpcDefendGoal;
 import com.pokewing.pokeefnpc.ai.NpcEmoteGoal;
+import com.pokewing.pokeefnpc.ai.NpcGuardOwnerGoal;
+import com.pokewing.pokeefnpc.ai.NpcOrdersGoal;
 import com.pokewing.pokeefnpc.ai.NpcFleeThreatGoal;
 import com.pokewing.pokeefnpc.ai.NpcFortifyGoal;
 import com.pokewing.pokeefnpc.ai.NpcGreetGoal;
@@ -113,6 +116,13 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
      * image itself, exactly as vanilla does for players, so no skin data passes
      * through the server.
      */
+    /**
+     * The standing order, synced so the client can show it above the head and in
+     * the menu without asking the server every frame.
+     */
+    private static final EntityDataAccessor<Integer> DATA_STANCE =
+            SynchedEntityData.defineId(NpcEntity.class, EntityDataSerializers.INT);
+
     private static final EntityDataAccessor<String> DATA_SKIN =
             SynchedEntityData.defineId(NpcEntity.class, EntityDataSerializers.STRING);
 
@@ -143,11 +153,18 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
 
     private int slowTickOffset;
 
+    /** Who this one answers to, and what it has been told to do. */
+    private Allegiance allegiance = new Allegiance();
+
     public NpcEntity(EntityType<? extends NpcEntity> type, Level level) {
         super(type, level);
         setPersistenceRequired();
         this.slowTickOffset = level.random.nextInt(SLOW_TICK);
-        setCanPickUpLoot(false);
+        // Everyone picks up gear, not just soldiers: throwing a helmet at a
+        // villager and watching them put it on is the whole point, and the
+        // pickup path only ever accepts an actual upgrade — see canHoldItem —
+        // so this does not turn the population into magpies.
+        setCanPickUpLoot(true);
     }
 
     public static AttributeSupplier.Builder createAttributes() {
@@ -174,6 +191,7 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         this.entityData.define(DATA_EMOTE, -1);
         this.entityData.define(DATA_EMOTE_TICKS, 0);
         this.entityData.define(DATA_ACTIVITY, Activity.HOME_IDLE.ordinal());
+        this.entityData.define(DATA_STANCE, Allegiance.Stance.OFF_DUTY.ordinal());
         this.entityData.define(DATA_SKIN, "");
     }
 
@@ -187,22 +205,28 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         // goal from courage, not by which goals were registered.
         this.goalSelector.addGoal(1, new NpcFleeThreatGoal(this));
         this.goalSelector.addGoal(2, new MeleeAttackGoal(this, 1.0D, true));
-        this.goalSelector.addGoal(3, new NpcStealGoal(this));
-        this.goalSelector.addGoal(4, new NpcGreetGoal(this));
-        this.goalSelector.addGoal(5, new NpcClaimSitesGoal(this));
-        this.goalSelector.addGoal(6, new NpcFortifyGoal(this));
+        // An order outranks the daily routine but not survival or a fight in
+        // progress: a soldier told to hold a gate stops keeping shop hours, and
+        // still runs from what would kill it.
+        this.goalSelector.addGoal(3, new NpcOrdersGoal(this));
+        this.goalSelector.addGoal(4, new NpcCollectGearGoal(this));
+        this.goalSelector.addGoal(5, new NpcStealGoal(this));
+        this.goalSelector.addGoal(6, new NpcGreetGoal(this));
+        this.goalSelector.addGoal(7, new NpcClaimSitesGoal(this));
+        this.goalSelector.addGoal(8, new NpcFortifyGoal(this));
         // The schedule is the backbone — everything above it is an interruption.
-        this.goalSelector.addGoal(7, new NpcScheduleGoal(this));
-        this.goalSelector.addGoal(8, new NpcEmoteGoal(this));
-        this.goalSelector.addGoal(9, new OpenDoorGoal(this, true));
-        this.goalSelector.addGoal(10, new MoveThroughVillageGoal(this, 0.6D, false, 4, () -> false));
-        this.goalSelector.addGoal(11, new WaterAvoidingRandomStrollGoal(this, 0.5D));
-        this.goalSelector.addGoal(12, new LookAtPlayerGoal(this, Player.class, 8.0F));
-        this.goalSelector.addGoal(13, new RandomLookAroundGoal(this));
+        this.goalSelector.addGoal(9, new NpcScheduleGoal(this));
+        this.goalSelector.addGoal(10, new NpcEmoteGoal(this));
+        this.goalSelector.addGoal(11, new OpenDoorGoal(this, true));
+        this.goalSelector.addGoal(12, new MoveThroughVillageGoal(this, 0.6D, false, 4, () -> false));
+        this.goalSelector.addGoal(13, new WaterAvoidingRandomStrollGoal(this, 0.5D));
+        this.goalSelector.addGoal(14, new LookAtPlayerGoal(this, Player.class, 8.0F));
+        this.goalSelector.addGoal(15, new RandomLookAroundGoal(this));
 
         this.targetSelector.addGoal(1, new HurtByTargetGoal(this).setAlertOthers(NpcEntity.class));
         this.targetSelector.addGoal(2, new NpcDefendGoal(this));
-        this.targetSelector.addGoal(3, new NearestAttackableTargetGoal<>(this, Monster.class,
+        this.targetSelector.addGoal(3, new NpcGuardOwnerGoal(this));
+        this.targetSelector.addGoal(4, new NearestAttackableTargetGoal<>(this, Monster.class,
                 10, true, false, this::willFight));
     }
 
@@ -213,6 +237,11 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
      * characters break off when they are nearly dead.
      */
     private boolean willFight(LivingEntity target) {
+        // Somebody under orders fights because they were told to. Second-guessing
+        // that would make a posted guard wander off mid-siege.
+        if (this.allegiance.stance().onDuty()) {
+            return true;
+        }
         if (!this.role.isDefender() && this.personality.courage < 0.6F) {
             return false;
         }
@@ -395,10 +424,173 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         }
 
         getLookControl().setLookAt(player, 30.0F, 30.0F);
+
+        // Handing gear over directly, rather than throwing it on the floor.
+        ItemStack held = player.getItemInHand(hand);
+        if (Gear.slotFor(held) != null) {
+            return offerGear(serverPlayer, held);
+        }
+
+        // Owner, empty hand, sneaking: cycle the standing order. Sneaking is the
+        // gesture that separates "give me an order" from "open your shop", which
+        // is why a soldier still trades normally.
+        if (player.isShiftKeyDown() && held.isEmpty()
+                && this.allegiance.isOwnedBy(player.getUUID())) {
+            Allegiance.Stance next = this.allegiance.stance().next();
+            setStance(next);
+            speak(serverPlayer, next.translationKey());
+            playEmote(next == Allegiance.Stance.OFF_DUTY ? Emote.BOW : Emote.SALUTE);
+            return InteractionResult.CONSUME;
+        }
+
         greet(player);
         openMenuFor(serverPlayer);
         return InteractionResult.CONSUME;
     }
+
+
+    // ------------------------------------------------------------- allegiance
+
+    public Allegiance allegiance() {
+        return this.allegiance;
+    }
+
+    /** The order this NPC is under, readable on the client from synced data. */
+    public Allegiance.Stance stance() {
+        return Allegiance.Stance.values()[
+                Math.floorMod(this.entityData.get(DATA_STANCE),
+                        Allegiance.Stance.values().length)];
+    }
+
+    public void setStance(Allegiance.Stance stance) {
+        this.allegiance.setStance(stance);
+        if (stance == Allegiance.Stance.HOLD || stance == Allegiance.Stance.PATROL) {
+            this.allegiance.setPost(blockPosition());
+        }
+        this.entityData.set(DATA_STANCE, stance.ordinal());
+    }
+
+    /**
+     * Takes this NPC into a player's service and makes a fighter of it.
+     *
+     * <p>Recruiting changes the role as well as the loyalty, because a baker who
+     * agrees to follow you into a fight is no longer living a baker's life — it
+     * needs a soldier's health, reach and nerve, or it dies in the first skirmish
+     * and the promotion was a cruelty rather than a promotion.
+     *
+     * <p>Gear already worn is kept. Somebody you armoured before recruiting them
+     * should not be stripped by the paperwork.
+     */
+    public void enlist(ServerPlayer player, NpcRole soldierRole) {
+        java.util.EnumMap<EquipmentSlot, ItemStack> kept =
+                new java.util.EnumMap<>(EquipmentSlot.class);
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            ItemStack worn = getItemBySlot(slot);
+            if (!worn.isEmpty() && getEquipmentDropChance(slot) > 0.5F) {
+                kept.put(slot, worn.copy());
+            }
+        }
+
+        applyRole(soldierRole, false);
+        this.allegiance.swearTo(player.getUUID());
+        this.entityData.set(DATA_STANCE, this.allegiance.stance().ordinal());
+        this.locked = true;
+        this.reputation.set(player.getUUID(), Reputation.MAX);
+        setCanPickUpLoot(true);
+
+        for (var entry : kept.entrySet()) {
+            setItemSlot(entry.getKey(), entry.getValue());
+            setDropChance(entry.getKey(), 1.0F);
+        }
+        this.mood.latch(this.personality, Emotion.HAPPY, 100);
+        pushFaceToClients();
+        playEmote(Emote.SALUTE);
+    }
+
+    /**
+     * Whether this one would take service under that player.
+     *
+     * <p>Trust is the gate, not payment: somebody who barely knows you will not
+     * follow you into a fight, and somebody who dislikes you certainly will not.
+     * A character with a soldier's nerve needs less convincing than a baker.
+     */
+    public boolean willEnlistWith(Player player) {
+        if (this.allegiance.isOwned()) {
+            return false;
+        }
+        float standing = this.reputation.of(player.getUUID());
+        float needed = this.role.isDefender() ? 25.0F : 55.0F;
+        return standing >= needed - this.personality.courage * 20.0F;
+    }
+
+    // ----------------------------------------------------------------- gear
+
+    /**
+     * Vanilla's pickup path, narrowed to gear that would be an upgrade.
+     *
+     * <p>Left as vanilla's own hook rather than a bespoke one so an item that
+     * simply lands at an NPC's feet is taken by exactly the same code that takes
+     * one it walked across the room for.
+     */
+    @Override
+    public boolean canHoldItem(ItemStack stack) {
+        return Gear.upgrade(this, stack) > 0.0D;
+    }
+
+    @Override
+    protected void pickUpItem(net.minecraft.world.entity.item.ItemEntity item) {
+        ItemStack stack = item.getItem();
+        if (Gear.upgrade(this, stack) <= 0.0D) {
+            return;
+        }
+        ItemStack displaced = Gear.equipIfBetter(this, stack);
+        onItemPickup(item);
+        take(item, 1);
+        stack.shrink(1);
+        if (stack.isEmpty()) {
+            item.discard();
+        }
+        // What it took off goes on the floor rather than into nothing, so the
+        // leather you replaced with iron is still yours to pick up.
+        if (!displaced.isEmpty()) {
+            spawnAtLocation(displaced);
+        }
+        this.mood.feel(this.personality, 0.25F, 0.15F);
+        pushFaceToClients();
+    }
+
+
+    /**
+     * Takes a piece of gear straight from a player's hand.
+     *
+     * <p>Refusing politely matters here: offering a guard a worse helmet than the
+     * one it is wearing should say so, not silently swallow the helmet.
+     */
+    private InteractionResult offerGear(ServerPlayer player, ItemStack held) {
+        ItemStack offered = held.copy();
+        offered.setCount(1);
+        if (Gear.upgrade(this, offered) > 0.0D) {
+            ItemStack displaced = Gear.equipIfBetter(this, offered);
+            if (!player.getAbilities().instabuild) {
+                held.shrink(1);
+            }
+            if (!displaced.isEmpty()) {
+                // Straight back to the giver, not onto the floor: they are
+                // standing right there and it was theirs a moment ago.
+                if (!player.getInventory().add(displaced)) {
+                    spawnAtLocation(displaced);
+                }
+            }
+            this.reputation.adjust(player.getUUID(), 4.0F);
+            this.mood.latch(this.personality, Emotion.HAPPY, 80);
+            pushFaceToClients();
+            playEmote(Emote.BOW);
+            return InteractionResult.CONSUME;
+        }
+        speak(player, "pokeefnpc.dialogue.gear_worse");
+        return InteractionResult.CONSUME;
+    }
+
 
     /** Plays the role's greeting and warms the mood a little, once per visit. */
     public void greet(Player player) {
@@ -856,6 +1048,7 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         tag.putBoolean("Locked", this.locked);
         tag.putBoolean("Natural", this.natural);
         tag.putString("Skin", skinName());
+        tag.put("Allegiance", this.allegiance.save());
         if (this.settlementId != null) {
             tag.putUUID("Settlement", this.settlementId);
         }
@@ -893,6 +1086,9 @@ public class NpcEntity extends PathfinderMob implements Npc, MenuProvider {
         this.locked = tag.getBoolean("Locked");
         this.natural = tag.getBoolean("Natural");
         setSkinName(tag.getString("Skin"));
+        this.allegiance = tag.contains("Allegiance")
+                ? Allegiance.load(tag.getCompound("Allegiance")) : new Allegiance();
+        this.entityData.set(DATA_STANCE, this.allegiance.stance().ordinal());
         this.settlementId = tag.hasUUID("Settlement") ? tag.getUUID("Settlement") : null;
         this.homePos = tag.contains("Home")
                 ? net.minecraft.nbt.NbtUtils.readBlockPos(tag.getCompound("Home")) : null;

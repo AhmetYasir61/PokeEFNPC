@@ -22,6 +22,7 @@ public final class ModCreativeTab {
                     .icon(() -> new ItemStack(ModItems.NPC_EDITOR.get()))
                     .displayItems((parameters, output) -> {
                         output.accept(ModItems.NPC_SPAWN_EGG.get());
+                        output.accept(ModItems.SOLDIER_NPC_SPAWN_EGG.get());
                         output.accept(ModItems.NPC_EDITOR.get());
                     })
                     .build());

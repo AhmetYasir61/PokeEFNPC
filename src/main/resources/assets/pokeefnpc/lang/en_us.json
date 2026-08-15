@@ -246,5 +246,17 @@
   "pokeefnpc.editor.tooltip.mode": "Mode: %s",
   "pokeefnpc.editor.tooltip.role": "Role: %s",
   "pokeefnpc.editor.tooltip.help": "Right click air to change mode - sneak + right click an NPC to change role",
-  "pokeefnpc.dialogue.no_answer": "Hm. I have nothing to say to that."
+  "pokeefnpc.dialogue.no_answer": "Hm. I have nothing to say to that.",
+  "item.pokeefnpc.soldier_npc_spawn_egg": "Soldier NPC Spawn Egg",
+  "pokeefnpc.tooltip.soldier_egg": "Place a soldier sworn to you, or offer the commission to an NPC that trusts you.",
+  "pokeefnpc.tooltip.soldier_egg_orders": "Sneak + right-click a soldier of yours to change its orders.",
+  "pokeefnpc.stance.off_duty": "As you wish. I'll get back to my own work.",
+  "pokeefnpc.stance.follow": "At your side.",
+  "pokeefnpc.stance.hold": "I'll hold this ground.",
+  "pokeefnpc.stance.patrol": "I'll walk the rounds here.",
+  "pokeefnpc.dialogue.gear_worse": "I've better than that already, but thank you.",
+  "pokeefnpc.dialogue.already_yours": "I already serve you.",
+  "pokeefnpc.dialogue.sworn_elsewhere": "I'm sworn to another.",
+  "pokeefnpc.dialogue.enlist_refused": "I don't know you well enough to take up arms for you.",
+  "pokeefnpc.dialogue.enlist_accepted": "Then I'll fight for you. Say the word."
 }

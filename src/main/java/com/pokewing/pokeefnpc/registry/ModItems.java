@@ -2,6 +2,8 @@ package com.pokewing.pokeefnpc.registry;
 
 import com.pokewing.pokeefnpc.PokeEFNPC;
 import com.pokewing.pokeefnpc.item.NpcEditorItem;
+import com.pokewing.pokeefnpc.item.SoldierEggItem;
+import com.pokewing.pokeefnpc.npc.NpcRole;
 
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Rarity;
@@ -21,6 +23,15 @@ public final class ModItems {
     public static final RegistryObject<Item> NPC_SPAWN_EGG = ITEMS.register("npc_spawn_egg",
             () -> new ForgeSpawnEggItem(ModEntities.NPC, 0x8A6B4A, 0xC9A227,
                     new Item.Properties()));
+
+    /**
+     * Places a soldier already sworn to you, or offers the commission to an NPC
+     * that already trusts you. See {@link SoldierEggItem}.
+     */
+    public static final RegistryObject<Item> SOLDIER_NPC_SPAWN_EGG =
+            ITEMS.register("soldier_npc_spawn_egg",
+                    () -> new SoldierEggItem(NpcRole.SOLDIER,
+                            new Item.Properties().rarity(Rarity.UNCOMMON)));
 
     /**
      * The operator's tool: sets a placed NPC's role, locks it, marks landmarks
