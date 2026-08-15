@@ -38,10 +38,15 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>What it <i>does</i> record is a cheap snapshot of where the speaker was and
  * which way they were looking on the first frame — plain vector arithmetic over
  * fields, no world access. {@link #sweep}, which runs on the server thread,
- * resolves that aim into an actual NPC. The behaviour is unchanged from the
- * outside: who you are talking to is still decided by where you were pointed when
- * you <i>started</i> the sentence, so turning your head mid-sentence does not
- * hand the back half of it to a different villager.
+ * resolves that aim into an actual NPC on the first tick after the sentence
+ * starts — not when it ends, so a villager that walks off mid-sentence still
+ * receives what was said to it. Audio buffers from the very first frame either
+ * way, so nothing of the opening syllable is lost while the lookup happens, and
+ * it costs one entity query per utterance rather than one per packet.
+ *
+ * <p>Who you are talking to is still decided by where you were pointed when you
+ * <i>started</i> the sentence, so turning your head mid-sentence does not hand
+ * the back half of it to a different villager.
  *
  * <p>No Simple Voice Chat type appears here: the plugin decodes to plain PCM
  * before handing frames over, which keeps this class loadable on a server with
@@ -69,6 +74,14 @@ public final class VoiceSessions {
          */
         Vec3 eye = Vec3.ZERO;
         Vec3 look = Vec3.ZERO;
+
+        /**
+         * Who is being addressed, decided on the server thread on the first tick
+         * after the sentence starts rather than when it ends — an NPC that walks
+         * off mid-sentence should still receive what was said to it.
+         */
+        boolean resolved;
+        int targetEntityId = -1;
     }
 
     private VoiceSessions() {
@@ -104,6 +117,14 @@ public final class VoiceSessions {
             }
         }
         synchronized (existing) {
+            // Resolved to nobody: this is ordinary chatter, not speech aimed at
+            // an NPC. The session stays as a cheap tombstone that swallows the
+            // rest of the sentence, so the addressee is looked up once per
+            // utterance instead of once per packet.
+            if (existing.resolved && existing.targetEntityId < 0) {
+                existing.lastPacketMillis = System.currentTimeMillis();
+                return;
+            }
             if (existing.totalSamples + pcm.length > MAX_SAMPLES) {
                 return;
             }
@@ -131,49 +152,76 @@ public final class VoiceSessions {
             Session session = entry.getValue();
 
             short[] utterance;
+            int targetId;
+            boolean needsResolving;
             Vec3 eye;
             Vec3 look;
+            boolean finished;
+
             // Everything under the lock is pure arithmetic on buffers. The world
             // work below happens after it is released, so this monitor can never
             // be held while anything blocks.
             synchronized (session) {
-                if (session.frames.isEmpty() || now - session.lastPacketMillis < gap) {
+                if (session.frames.isEmpty() && !session.resolved) {
                     continue;
                 }
-                boolean tooShort = session.totalSamples
-                        < AudioTools.VOICE_RATE * PokeEFNPCConfig.voiceMinMillis() / 1000;
-                boolean tooQuiet = session.peakLoudness < 0.01F;
-                utterance = tooShort || tooQuiet
-                        ? null : AudioTools.concat(session.frames, session.totalSamples);
+                needsResolving = !session.resolved;
                 eye = session.eye;
                 look = session.look;
+                finished = now - session.lastPacketMillis >= gap;
+
+                if (!finished) {
+                    utterance = null;
+                    targetId = session.targetEntityId;
+                } else {
+                    boolean tooShort = session.totalSamples
+                            < AudioTools.VOICE_RATE * PokeEFNPCConfig.voiceMinMillis() / 1000;
+                    boolean tooQuiet = session.peakLoudness < 0.01F;
+                    utterance = tooShort || tooQuiet
+                            ? null : AudioTools.concat(session.frames, session.totalSamples);
+                    targetId = session.targetEntityId;
+                }
             }
-            iterator.remove();
-            if (utterance == null) {
-                // A cough, a knocked microphone, or the tail of somebody else's
-                // sentence. Not worth waking the recogniser for.
+
+            // Resolve on the first tick after the sentence starts, not when it
+            // ends. Audio has been buffering since the very first frame, so
+            // nothing of the opening syllable is lost while this happens, and it
+            // runs once per utterance rather than once per packet.
+            if (needsResolving) {
+                ServerPlayer speaker = server.getPlayerList().getPlayer(entry.getKey());
+                NpcEntity addressee = speaker == null ? null : resolveAddressee(speaker, eye, look);
+                synchronized (session) {
+                    session.resolved = true;
+                    session.targetEntityId = addressee == null ? -1 : addressee.getId();
+                    targetId = session.targetEntityId;
+                    if (addressee == null) {
+                        // Free the buffered audio immediately; nobody was being
+                        // spoken to and it will never be transcribed.
+                        session.frames.clear();
+                        session.totalSamples = 0;
+                        utterance = null;
+                    }
+                }
+            }
+
+            if (!finished) {
                 continue;
             }
-            dispatch(server, entry.getKey(), eye, look, utterance);
+            iterator.remove();
+            if (utterance == null || targetId < 0) {
+                continue;
+            }
+            dispatch(server, entry.getKey(), targetId, utterance);
         }
     }
 
     /** Hands one finished utterance to the recogniser, then to the NPC's brain. */
-    private static void dispatch(MinecraftServer server, UUID speakerId, Vec3 eye, Vec3 look,
+    private static void dispatch(MinecraftServer server, UUID speakerId, int targetEntityId,
                                  short[] utterance) {
         ServerPlayer player = server.getPlayerList().getPlayer(speakerId);
         if (player == null) {
             return;
         }
-        // Safe here: this is the server thread.
-        NpcEntity addressee = resolveAddressee(player, eye, look);
-        if (addressee == null) {
-            // Ordinary player chatter, not aimed at anybody. Never transcribed —
-            // the whole village should not be listening in on every conversation.
-            return;
-        }
-        int targetEntityId = addressee.getId();
-
         NpcVoiceBridge.submit(() -> {
             String heard = SpeechToText.transcribe(utterance);
             if (heard == null) {
